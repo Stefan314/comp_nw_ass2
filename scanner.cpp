@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <iostream>
+#include <vector>
 
 /**
  * @see [How to convert a command-line argument to int?](https://stackoverflow.com/a/2797823)
@@ -121,6 +122,9 @@ int main(int argc, char *argv[]) {
     destaddr.sin_family = AF_INET;
     inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
 
+    std::vector<int> open_ports;
+    char recv_buff[1400];
+
 //    Loop over all requested port numbers
     for (int port_no = from; port_no <= to; port_no++) {
         destaddr.sin_port = htons(port_no);
@@ -128,5 +132,14 @@ int main(int argc, char *argv[]) {
         if (sendto(sock, buffer, length, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
             perror("Could not send");
         }
+
+        if (recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *)&destaddr,
+                 reinterpret_cast<socklen_t *>(sizeof(destaddr))) > 0) {
+            open_ports.push_back(port_no);
+        }
+
+        memset(recv_buff, 0, sizeof(recv_buff));
     }
+    std::string open_ports_string(open_ports.begin(), open_ports.end());
+    printf("The open ports are:%s\n", open_ports_string.c_str());
 }
