@@ -129,16 +129,30 @@ int main(int argc, char *argv[]) {
     for (int port_no = from; port_no <= to; port_no++) {
         destaddr.sin_port = htons(port_no);
 
-        if (sendto(sock, buffer, length, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
-            perror("Could not send");
+        //int setsockopt(int sockfd);
+        setsockopt(sock, 17, SO_RCVTIMEO, 0, sizeof(buffer));
+        //getsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tsnd, &ntsnd);
+        // amount of times you want to try and send the message
+        int retries = 5;
+        while(retries > 0) {
+            try {
+                if (sendto(sock, buffer, length, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
+                    perror("Could not send");
+                } 
+                else {
+                    if (recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *)&destaddr,
+                             reinterpret_cast<socklen_t *>(sizeof(destaddr))) > 0) {
+                        open_ports.push_back(port_no);
+                        break; // success!
+                    }
+                    memset(recv_buff, 0, sizeof(recv_buff));
+                }
+                retries--;
+            } 
+            catch(const std::overflow_error& e){
+                throw "could not send";
+            }
         }
-
-        if (recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *)&destaddr,
-                 reinterpret_cast<socklen_t *>(sizeof(destaddr))) > 0) {
-            open_ports.push_back(port_no);
-        }
-
-        memset(recv_buff, 0, sizeof(recv_buff));
     }
     std::string open_ports_string(open_ports.begin(), open_ports.end());
     printf("The open ports are:%s\n", open_ports_string.c_str());
