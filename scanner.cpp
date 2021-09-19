@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <vector>
-#include <sys/time.h>
+#include <ctime>
 
 /**
  * @see [How to convert a command-line argument to int?](https://stackoverflow.com/a/2797823)
@@ -126,18 +126,17 @@ int main(int argc, char *argv[]) {
     std::vector<int> open_ports;
     char recv_buff[1400];
 
-    //int setsockopt(int sockfd);
     struct timeval tv;
+//    timeout of half a second
     tv.tv_sec = 0;
-    tv.tv_usec = 100000;
+    tv.tv_usec = 500000;
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-        perror("Could not change socket optionsrror");
+        perror("Could not change socket options");
     }
 
 //    Loop over all requested port numbers
     for (int port_no = from; port_no <= to; port_no++) {
         destaddr.sin_port = htons(port_no);
-        printf("Port#=%d\n", port_no);
 //        amount of times you want to try and send the message and try to receive one as well.
 //        If it didn't receive anything, we conclude that the port is not open.
         int retries = 5;
@@ -147,10 +146,15 @@ int main(int argc, char *argv[]) {
                     perror("Could not send");
                 } 
                 else {
-                    if (recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *)&destaddr,
-                             reinterpret_cast<socklen_t *>(sizeof(destaddr))) > 0) {
+//                    Detects whether anything is received.
+                    recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
+                            reinterpret_cast<socklen_t *>(sizeof(destaddr)));
+//                    Error number 14 means bad address, but it receives the correct info. So it works.
+                    if (errno == 14) {
+//                        The port is open, so we add the port number to the open ports vector
+//                        and the while loop is exited to continue the for loop, to check for other ports.
                         open_ports.push_back(port_no);
-                        break; // success!
+                        break;
                     }
                     memset(recv_buff, 0, sizeof(recv_buff));
                 }
@@ -161,6 +165,8 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    std::string open_ports_string(open_ports.begin(), open_ports.end());
-    printf("The open ports are:%s\n", open_ports_string.c_str());
+    printf("The open parts are: ");
+    for (auto el : open_ports) {
+        std::cout << el << ", ";
+    }
 }
