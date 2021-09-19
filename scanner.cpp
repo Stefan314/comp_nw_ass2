@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <vector>
+#include <sys/time.h>
 
 /**
  * @see [How to convert a command-line argument to int?](https://stackoverflow.com/a/2797823)
@@ -125,14 +126,20 @@ int main(int argc, char *argv[]) {
     std::vector<int> open_ports;
     char recv_buff[1400];
 
+    //int setsockopt(int sockfd);
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 100000;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        perror("Could not change socket optionsrror");
+    }
+
 //    Loop over all requested port numbers
     for (int port_no = from; port_no <= to; port_no++) {
         destaddr.sin_port = htons(port_no);
-
-        //int setsockopt(int sockfd);
-        setsockopt(sock, 17, SO_RCVTIMEO, 0, sizeof(buffer));
-        //getsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tsnd, &ntsnd);
-        // amount of times you want to try and send the message
+        printf("Port#=%d\n", port_no);
+//        amount of times you want to try and send the message and try to receive one as well.
+//        If it didn't receive anything, we conclude that the port is not open.
         int retries = 5;
         while(retries > 0) {
             try {
