@@ -16,10 +16,10 @@ int main(int argc, char *argv[]) {
 //    Default ip-address
     std::string dest_ip = "130.208.242.120";
 //    The secret ports
-    int port1 = 4000;
-    int port2 = 4000;
-    int port3 = 4000;
-    int port4 = 4000;
+    int port1;
+    int port2;
+    int port3;
+    int port4;
 
 //    The socket
     int sock = socket_creation();
@@ -57,14 +57,14 @@ int main(int argc, char *argv[]) {
             given_no_of_open_ports = argc - 2;
         }
         printf("You have given an insufficient amount of ports. 4 were required but %d were given.\n"
-               "The program will scan for ports that are open.\n"
-                , given_no_of_open_ports);
+               "The program will scan for ports that are open.\n",
+               given_no_of_open_ports);
         if (argc == 2) {
             dest_ip = argv[1];
             check_ip(dest_ip.c_str());
         } else {
-            printf("You have not entered an ip-address. The default ip-address will be used. This is %s.\n"
-                    , dest_ip.c_str());
+            printf("You have not entered an ip-address. The default ip-address will be used. This is %s.\n",
+                   dest_ip.c_str());
         }
 
         int from = 4000;
@@ -77,4 +77,13 @@ int main(int argc, char *argv[]) {
     }
 
     printf("The open parts are: %d, %d, %d, %d\n", port1, port2, port3, port4);
+
+//    Send comma separated list
+    std::string kw1 = "I";
+//    Send $group_47$
+    std::string kw2 = "My";
+//    Send $group_47$
+    std::string kw3 = "The";
+//    Send to secret port. Message: My boss told me not to tell anyone that my secret port is 4001
+    std::string kw4 = "Send";
 }
