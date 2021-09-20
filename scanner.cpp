@@ -9,9 +9,16 @@
 #include <vector>
 #include <ctime>
 
-struct sockaddr_in sock_opts(int sock, int dest_ip);
+struct sockaddr_in sock_opts(int sock, const std::string&  dest_ip);
 
 int socket_creation();
+
+int char_pointer_to_int(char *argument);
+
+void check_ip(const char *argument);
+
+std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock,
+                                 const void *buff, size_t buff_len);
 
 struct sockaddr_in sock_opts(int sock, const std::string& dest_ip) {
     struct sockaddr_in destaddr;
@@ -21,11 +28,22 @@ struct sockaddr_in sock_opts(int sock, const std::string& dest_ip) {
     struct timeval tv;
 //    timeout of half a second
     tv.tv_sec = 0;
-    tv.tv_usec = 500000;
+    tv.tv_usec = 100000;
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
         perror("Could not change socket options");
     }
     return destaddr;
+}
+
+int socket_creation() {
+//    The UDP socket
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+//    If the program cannot open a socket, raise an error and stop.
+    if (sock < 0) {
+        perror("Cannot open socket");
+        return(-1);
+    }
+    return(sock);
 }
 
 /**
@@ -76,7 +94,8 @@ void check_ip(const char *argument) {
     char_pointer_to_int(prefix);
 }
 
-std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock, const void *buff, size_t buff_len) {
+std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock,
+        const void *buff, size_t buff_len) {
     std::vector<int> open_ports;
     char recv_buff[1400];
     
@@ -114,80 +133,69 @@ std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, 
     return(open_ports);
 }
 
-int main(int argc, char *argv[]) {
-//    Default parameters which might be changed depending on how many arguments are given.
-    std::string dest_ip = "130.208.242.120";
-//    Start scanning ports from this port number
-    int from = 4000;
-//    Until (inclusive) this port number
-    int to = 4100;
-//    Take care of given arguments. We want 3 arguments, 'ip-address', 'low port, and 'high port' respectively.
-//    The first argument is the ip-address of the destination.
-//    The second one is the lowest port it needs to scan activity for.
-//    The last argument is the last port, the program needs to scan activity for.
-
-//    Too many arguments were given, only use the useful ones. And let the user know they are stupid.
-    if (argc > 4) {
-        printf("Too many arguments were given. Only the first 3 will be used. "
-               "Respectively, they are ip-address, low port, and high port.\n");
-    }
-
-    if (argc > 3) {
-        dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
-        from = char_pointer_to_int(argv[2]);
-        to = char_pointer_to_int(argv[3]);
-        if (to < from) {
-            throw std::invalid_argument("High port is lower than low port");
-        }
-    } else if (argc == 3) {
-        dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
-        from = char_pointer_to_int(argv[2]);
-        to = from + 100;
-        printf("You have given 2 arguments, whereas 3 were expected.\n"
-               "The third parameter, 'high port', will be set to: %s\n",
-               std::to_string(to).c_str());
-    } else if (argc == 2) {
-        dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
-        printf("You have given 1 argument, whereas 3 were expected.\n"
-               "The second parameter, 'low port', will be set to: %s\n"
-               "The third parameter, 'high port', will be set to: %s\n",
-               std::to_string(from).c_str(), std::to_string(to).c_str());
-    } else {
-        printf("You have given 0 arguments, whereas 3 were expected.\n"
-               "The first parameter, 'ip-address', will be set to: %s\n"
-               "The second parameter, 'low port', will be set to: %s\n"
-               "The third parameter, 'high port', will be set to: %s\n",
-               dest_ip.c_str(), std::to_string(from).c_str(), std::to_string(to).c_str());
-    }
-    
-    int sock = socket_creation();
-    if (sock == -1) {
-        return(-1);
-    }
-    struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
-    
-//    The msg sent to the port
-    char buffer[1400];
-    strcpy(buffer, "Hey Port");
-
-    int buff_len = strlen(buffer) + 1;
-    
-    printf("The open parts are: ");
-    for (auto el : find_open_ports(destaddr, from, to, sock, buffer, buff_len)) {
-        std::cout << el << ", ";
-    }
-}
-
-int socket_creation() {
-//    The UDP socket
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-//    If the program cannot open a socket, raise an error and stop.
-    if (sock < 0) {
-        perror("Cannot open socket");
-        return(-1);
-    }
-    return(sock);
-}
+//int main(int argc, char *argv[]) {
+////    Default parameters which might be changed depending on how many arguments are given.
+//    std::string dest_ip = "130.208.242.120";
+////    Start scanning ports from this port number
+//    int from = 4000;
+////    Until (inclusive) this port number
+//    int to = 4100;
+////    Take care of given arguments. We want 3 arguments, 'ip-address', 'low port, and 'high port' respectively.
+////    The first argument is the ip-address of the destination.
+////    The second one is the lowest port it needs to scan activity for.
+////    The last argument is the last port, the program needs to scan activity for.
+//
+////    Too many arguments were given, only use the useful ones. And let the user know they are stupid.
+//    if (argc > 4) {
+//        printf("Too many arguments were given. Only the first 3 will be used. "
+//               "Respectively, they are ip-address, low port, and high port.\n");
+//    }
+//
+//    if (argc > 3) {
+//        dest_ip = argv[1];
+//        check_ip(dest_ip.c_str());
+//        from = char_pointer_to_int(argv[2]);
+//        to = char_pointer_to_int(argv[3]);
+//        if (to < from) {
+//            throw std::invalid_argument("High port is lower than low port");
+//        }
+//    } else if (argc == 3) {
+//        dest_ip = argv[1];
+//        check_ip(dest_ip.c_str());
+//        from = char_pointer_to_int(argv[2]);
+//        to = from + 100;
+//        printf("You have given 2 arguments, whereas 3 were expected.\n"
+//               "The third parameter, 'high port', will be set to: %s\n",
+//               std::to_string(to).c_str());
+//    } else if (argc == 2) {
+//        dest_ip = argv[1];
+//        check_ip(dest_ip.c_str());
+//        printf("You have given 1 argument, whereas 3 were expected.\n"
+//               "The second parameter, 'low port', will be set to: %s\n"
+//               "The third parameter, 'high port', will be set to: %s\n",
+//               std::to_string(from).c_str(), std::to_string(to).c_str());
+//    } else {
+//        printf("You have given 0 arguments, whereas 3 were expected.\n"
+//               "The first parameter, 'ip-address', will be set to: %s\n"
+//               "The second parameter, 'low port', will be set to: %s\n"
+//               "The third parameter, 'high port', will be set to: %s\n",
+//               dest_ip.c_str(), std::to_string(from).c_str(), std::to_string(to).c_str());
+//    }
+//
+//    int sock = socket_creation();
+//    if (sock == -1) {
+//        return(-1);
+//    }
+//    struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
+//
+////    The msg sent to the port
+//    char buffer[1400];
+//    strcpy(buffer, "Hey Port");
+//
+//    int buff_len = strlen(buffer) + 1;
+//
+//    printf("The open parts are: ");
+//    for (auto el : find_open_ports(destaddr, from, to, sock, buffer, buff_len)) {
+//        std::cout << el << ", ";
+//    }
+//}
