@@ -16,10 +16,7 @@ int main(int argc, char *argv[]) {
 //    Default ip-address
     std::string dest_ip = "130.208.242.120";
 //    The secret ports
-    int port1;
-    int port2;
-    int port3;
-    int port4;
+    std::vector<int> open_ports;
 
 //    The socket
     int sock = socket_creation();
@@ -47,10 +44,15 @@ int main(int argc, char *argv[]) {
     if (argc > 5) {
         dest_ip = argv[1];
         check_ip(dest_ip.c_str());
-        port1 = char_pointer_to_int(argv[2]);
-        port2 = char_pointer_to_int(argv[3]);
-        port3 = char_pointer_to_int(argv[4]);
-        port4 = char_pointer_to_int(argv[5]);
+        int port1 = char_pointer_to_int(argv[2]);
+        int port2 = char_pointer_to_int(argv[3]);
+        int port3 = char_pointer_to_int(argv[4]);
+        int port4 = char_pointer_to_int(argv[5]);
+
+        open_ports.push_back(port1);
+        open_ports.push_back(port2);
+        open_ports.push_back(port3);
+        open_ports.push_back(port4);
     } else {
         int given_no_of_open_ports = 0;
         if (argc > 1) {
@@ -69,14 +71,8 @@ int main(int argc, char *argv[]) {
 
         int from = 4000;
         int to = 4100;
-        std::vector<int> open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len);
-        port1 = open_ports[0];
-        port2 = open_ports[1];
-        port3 = open_ports[2];
-        port4 = open_ports[3];
+        open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len);
     }
-
-    printf("The open parts are: %d, %d, %d, %d\n", port1, port2, port3, port4);
 
 //    Send comma separated list
     std::string kw1 = "I";
