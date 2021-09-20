@@ -9,6 +9,25 @@
 #include <vector>
 #include <ctime>
 
+struct sockaddr_in sock_opts(int sock, int dest_ip);
+
+int socket_creation();
+
+struct sockaddr_in sock_opts(int sock, const std::string& dest_ip) {
+    struct sockaddr_in destaddr;
+    destaddr.sin_family = AF_INET;
+    inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
+
+    struct timeval tv;
+//    timeout of half a second
+    tv.tv_sec = 0;
+    tv.tv_usec = 500000;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        perror("Could not change socket options");
+    }
+    return destaddr;
+}
+
 /**
  * @see [How to convert a command-line argument to int?](https://stackoverflow.com/a/2797823)
  * @param arg The argument that should be converted into an integer.
@@ -16,7 +35,7 @@
  * @throw An error if the given argument cannot be converted into a number.
  * I.e., it has characters that are not numbers.
  */
-int char_star_to_int(char *argument) {
+int char_pointer_to_int(char *argument) {
     std::string arg(argument);
     try {
         std::size_t pos;
@@ -47,14 +66,52 @@ void check_ip(const char *argument) {
         unsigned long ind_diff = ind_occ - prev_ind_occ;
         char *prefix = new char[ind_diff + 1];
         strcpy(prefix, arg.substr(prev_ind_occ, ind_diff).c_str());
-        char_star_to_int(prefix);
+        char_pointer_to_int(prefix);
         prev_ind_occ = ind_occ + 1;
         ind_occ = arg.find(delimiter, prev_ind_occ);
     }
     unsigned long ind_diff = arg.size() - prev_ind_occ;
     char *prefix = new char[ind_diff + 1];
     strcpy(prefix, arg.substr(prev_ind_occ).c_str());
-    char_star_to_int(prefix);
+    char_pointer_to_int(prefix);
+}
+
+std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock, const void *buff, size_t buff_len) {
+    std::vector<int> open_ports;
+    char recv_buff[1400];
+    
+//    Loop over all requested port numbers
+    for (int port_no = from; port_no <= to; port_no++) {
+        destaddr.sin_port = htons(port_no);
+//        amount of times you want to try and send the message and try to receive one as well.
+//        If it didn't receive anything, we conclude that the port is not open.
+        int retries = 5;
+        while(retries > 0) {
+            try {
+                if (sendto(sock, buff, buff_len, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
+                    perror("Could not send");
+                }
+                else {
+//                    Detects whether anything is received.
+                    recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
+                             reinterpret_cast<socklen_t *>(sizeof(destaddr)));
+//                    Error number 14 means bad address, but it receives the correct info. So it works.
+                    if (errno == 14) {
+//                        The port is open, so we add the port number to the open ports vector
+//                        and the while loop is exited to continue the for loop, to check for other ports.
+                        open_ports.push_back(port_no);
+                        break;
+                    }
+                    memset(recv_buff, 0, sizeof(recv_buff));
+                }
+                retries--;
+            }
+            catch(const std::overflow_error& e){
+                throw "could not send";
+            }
+        }
+    }
+    return(open_ports);
 }
 
 int main(int argc, char *argv[]) {
@@ -78,15 +135,15 @@ int main(int argc, char *argv[]) {
     if (argc > 3) {
         dest_ip = argv[1];
         check_ip(dest_ip.c_str());
-        from = char_star_to_int(argv[2]);
-        to = char_star_to_int(argv[3]);
+        from = char_pointer_to_int(argv[2]);
+        to = char_pointer_to_int(argv[3]);
         if (to < from) {
             throw std::invalid_argument("High port is lower than low port");
         }
     } else if (argc == 3) {
         dest_ip = argv[1];
         check_ip(dest_ip.c_str());
-        from = char_star_to_int(argv[2]);
+        from = char_pointer_to_int(argv[2]);
         to = from + 100;
         printf("You have given 2 arguments, whereas 3 were expected.\n"
                "The third parameter, 'high port', will be set to: %s\n",
@@ -105,6 +162,26 @@ int main(int argc, char *argv[]) {
                "The third parameter, 'high port', will be set to: %s\n",
                dest_ip.c_str(), std::to_string(from).c_str(), std::to_string(to).c_str());
     }
+    
+    int sock = socket_creation();
+    if (sock == -1) {
+        return(-1);
+    }
+    struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
+    
+//    The msg sent to the port
+    char buffer[1400];
+    strcpy(buffer, "Hey Port");
+
+    int buff_len = strlen(buffer) + 1;
+    
+    printf("The open parts are: ");
+    for (auto el : find_open_ports(destaddr, from, to, sock, buffer, buff_len)) {
+        std::cout << el << ", ";
+    }
+}
+
+int socket_creation() {
 //    The UDP socket
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
 //    If the program cannot open a socket, raise an error and stop.
@@ -112,61 +189,5 @@ int main(int argc, char *argv[]) {
         perror("Cannot open socket");
         return(-1);
     }
-
-    char buffer[1400];
-    struct sockaddr_in destaddr;
-//    The msg in the buffer
-    strcpy(buffer, "Hey Port");
-
-    int length = strlen(buffer) + 1;
-
-    destaddr.sin_family = AF_INET;
-    inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
-
-    std::vector<int> open_ports;
-    char recv_buff[1400];
-
-    struct timeval tv;
-//    timeout of half a second
-    tv.tv_sec = 0;
-    tv.tv_usec = 500000;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-        perror("Could not change socket options");
-    }
-
-//    Loop over all requested port numbers
-    for (int port_no = from; port_no <= to; port_no++) {
-        destaddr.sin_port = htons(port_no);
-//        amount of times you want to try and send the message and try to receive one as well.
-//        If it didn't receive anything, we conclude that the port is not open.
-        int retries = 5;
-        while(retries > 0) {
-            try {
-                if (sendto(sock, buffer, length, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
-                    perror("Could not send");
-                } 
-                else {
-//                    Detects whether anything is received.
-                    recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
-                            reinterpret_cast<socklen_t *>(sizeof(destaddr)));
-//                    Error number 14 means bad address, but it receives the correct info. So it works.
-                    if (errno == 14) {
-//                        The port is open, so we add the port number to the open ports vector
-//                        and the while loop is exited to continue the for loop, to check for other ports.
-                        open_ports.push_back(port_no);
-                        break;
-                    }
-                    memset(recv_buff, 0, sizeof(recv_buff));
-                }
-                retries--;
-            } 
-            catch(const std::overflow_error& e){
-                throw "could not send";
-            }
-        }
-    }
-    printf("The open parts are: ");
-    for (auto el : open_ports) {
-        std::cout << el << ", ";
-    }
+    return(sock);
 }
