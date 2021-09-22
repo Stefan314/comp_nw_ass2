@@ -169,7 +169,6 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
 //                        The port is open, so we add the port number to the open ports vector
 //                        and the while loop is exited to continue the for loop, to check for other ports.
                         char first_char = recv_buff[0];
-                        memset(recv_buff, 0, sizeof(recv_buff));
                         if (first_char == key_char1) {
                             csl_port = curr_port;
                         } else if (first_char == key_char2) {
@@ -182,15 +181,22 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
                         } else if (first_char == key_char3) {
 //                            TODO: Send evil bit
                         } else if (first_char == key_char4) {
-//                            TODO: Fix finding the port
                             // Find secret port in recv buffer
                             std::string sec_port;
                             int recv_buff_len = sizeof(recv_buff) / sizeof(recv_buff[0]);
-                            for (int j = recv_buff_len - 5; j < recv_buff_len - 1; j++) {
-                                sec_port += recv_buff[i];
+                            for (int j = 0; j < recv_buff_len; j++) {
+                                char el = recv_buff[j];
+                                if (el == '4') {
+                                    for (int k = j; k < j + 4; k++) {
+                                        char char_to_add = recv_buff[k];
+                                        sec_port += char_to_add;
+                                    }
+                                    break;
+                                }
                             }
                             secret_ports.push_back(sec_port);
                         }
+                        memset(recv_buff, 0, sizeof(recv_buff));
                         break;
                     }
                     memset(recv_buff, 0, sizeof(recv_buff));
