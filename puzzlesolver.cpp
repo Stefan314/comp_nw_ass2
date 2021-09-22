@@ -1,4 +1,3 @@
-/
 // Created by Stefan on 18/09/2021.
 //
 
@@ -87,7 +86,7 @@ int main(int argc, char *argv[]) {
         open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len, no_of_retries);
     }
 
-    sendMessage(open_ports, sock, buffer, dest_ip, false);
+    sendMessage(open_ports, sock, buffer, dest_ip);
 
 }
 
@@ -205,6 +204,7 @@ void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::strin
                         if (first_variable == kw1){
                             // TO DO:
                             // send csl to 1st port
+                            // add a parameter to function to cointion csl!
                         }
 
 
