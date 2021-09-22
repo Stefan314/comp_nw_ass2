@@ -26,13 +26,14 @@ int main(int argc, char *argv[]) {
 //    The secret ports
     std::vector<int> open_ports;
 
-//    The socket
-    int sock = socket_creation();
-    if (sock == -1) {
+//    The UDP socket
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+//    If the program cannot open a socket, raise an error and stop.
+    if (sock < 0) {
+        perror("Cannot open socket");
         return(-1);
     }
     struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
-
 
 //    The msg sent to the port
     char buffer[1400];
@@ -91,9 +92,8 @@ int main(int argc, char *argv[]) {
 void sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer, std::string dest_ip, int message_option, int port_nr) {
     struct sockaddr_in destaddr;
     // converting int to char const
-    /*char const *port_char = std::to_string(open_ports[0]).c_str();
+    char const *port_char = std::to_string(open_ports[0]).c_str();
     strcpy(buffer, port_char);
-    */
 
     if(message_option == 1){
         strcpy(buffer, "group_47");
@@ -101,10 +101,6 @@ void sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer, std::
         // Send to secret port. Message: My boss told me not to tell anyone that my secret port is port nr
     else if(message_option == 2){
         strcpy(buffer, "port_nr something");
-    }
-    else if(message_option == 3){
-        //"" should be response of port receiving groupnr.
-        strcpy(buffer, "TO DO");
     }
     //  The msg in the buffer
     int length = strlen(buffer) + 1;
@@ -121,14 +117,14 @@ void sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer, std::
                 perror("Could not send");
             }
             else {
-//                      Detects whether anything is received.
+//                    Detects whether anything is received.
                 recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
                          reinterpret_cast<socklen_t *>(sizeof(destaddr)));
-//              Error number 14 means bad address, but it receives the correct info. So it works.
+                char first_variable = recv_buff[0];
+//                    Error number 14 means bad address, but it receives the correct info. So it works.
                 if (errno == 14) {
                     break;
                 }
-                sendFinalmessage(open_ports, sock, buffer, dest_ip, 1, 3);
                 break;
             }
             retries--;
@@ -141,7 +137,7 @@ void sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer, std::
 
 void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::string dest_ip) {
 
-    for(int i = 1; i<4; i++){
+    for(int i; i<4; i++){
         struct sockaddr_in destaddr;
         //  The msg in the buffer
         strcpy(buffer, "Hey Port");
@@ -162,6 +158,7 @@ void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::strin
 //                    Detects whether anything is received.
                     recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
                              reinterpret_cast<socklen_t *>(sizeof(destaddr)));
+                    char first_variable = recv_buff[0];
 //                    Error number 14 means bad address, but it receives the correct info. So it works.
                     if (errno == 14) {
 //                        The port is open, so we add the port number to the open ports vector
@@ -170,12 +167,11 @@ void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::strin
                         break;
                     }
                     memset(recv_buff, 0, sizeof(recv_buff));
-                    // if it's the second or third port
-                    if (i == 1 || i == 2){
+                    if (i == 2 || i == 3){
                         // Send "group_47"
                         sendFinalmessage(open_ports, sock, buffer, dest_ip, 1, i);
                     }
-                    else if (i == 3){
+                    else if (i == 4){
                         // send .... (we don't know yet)
                         sendFinalmessage(open_ports, sock, buffer, dest_ip, 2, i);
                     }
