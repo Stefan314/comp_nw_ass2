@@ -20,6 +20,9 @@ void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::strin
 
 
 int main(int argc, char *argv[]) {
+    int no_of_retries = 20;
+//    In milliseconds
+    int timeout_ms = 50;
 //    Default parameters which might be changed depending on how many arguments are given.
 //    Default ip-address
     std::string dest_ip = "130.208.242.120";
@@ -33,7 +36,7 @@ int main(int argc, char *argv[]) {
         perror("Cannot open socket");
         return(-1);
     }
-    struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
+    struct sockaddr_in destaddr = sock_opts(sock, dest_ip, timeout_ms);
 
 //    The msg sent to the port
     char buffer[1400];
@@ -81,7 +84,7 @@ int main(int argc, char *argv[]) {
 
         int from = 4000;
         int to = 4100;
-        open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len);
+        open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len, 20);
     }
 
     sendMessage(open_ports, sock, buffer, dest_ip);

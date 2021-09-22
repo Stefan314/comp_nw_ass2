@@ -9,7 +9,7 @@
 #include <vector>
 #include <ctime>
 
-struct sockaddr_in sock_opts(int sock, const std::string&  dest_ip);
+struct sockaddr_in sock_opts(int sock, const std::string&  dest_ip, int timeout_ms);
 
 int socket_creation();
 
@@ -18,9 +18,9 @@ int char_pointer_to_int(char *argument);
 void check_ip(const char *argument);
 
 std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock,
-                                 const void *buff, size_t buff_len);
+                                 const void *buff, size_t buff_len, int no_of_retries);
 
-struct sockaddr_in sock_opts(int sock, const std::string& dest_ip) {
+struct sockaddr_in sock_opts(int sock, const std::string& dest_ip, int timeout_ms) {
     struct sockaddr_in destaddr;
     destaddr.sin_family = AF_INET;
     inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
@@ -28,7 +28,7 @@ struct sockaddr_in sock_opts(int sock, const std::string& dest_ip) {
     struct timeval tv;
 //    timeout of half a second
     tv.tv_sec = 0;
-    tv.tv_usec = 100000;
+    tv.tv_usec = timeout_ms * 1000;
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
         perror("Could not change socket options");
     }
@@ -95,7 +95,7 @@ void check_ip(const char *argument) {
 }
 
 std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock,
-        const void *buff, size_t buff_len) {
+        const void *buff, size_t buff_len, int no_of_retries) {
     std::vector<int> open_ports;
     char recv_buff[1400];
     
@@ -104,7 +104,7 @@ std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, 
         destaddr.sin_port = htons(port_no);
 //        amount of times you want to try and send the message and try to receive one as well.
 //        If it didn't receive anything, we conclude that the port is not open.
-        int retries = 5;
+        int retries = no_of_retries;
         while(retries > 0) {
             try {
                 if (sendto(sock, buff, buff_len, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
