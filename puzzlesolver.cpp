@@ -34,6 +34,7 @@ int main(int argc, char *argv[]) {
 
 //    The UDP socket
     int sock = socket_creation();
+    sock_opts(sock, dest_ip, timeout_ms);
 
 //    The msg sent to the port
     char buffer[1400];
@@ -82,7 +83,6 @@ int main(int argc, char *argv[]) {
     }
 
     sendMessage(open_ports, sock, buffer, dest_ip);
-
 }
 
 
@@ -198,6 +198,7 @@ std::string createIPHeader(std::string checksum, std::string src_ip, std::string
     ip_header += std::bitset<8>(250).to_string();
 //    Protocol = 17, because UDP
     ip_header += std::bitset<8>(17).to_string();
+//    TODO: Do we need the checksum here?
 //    Header checksum
     ip_header += hexToBin(checksum.c_str());
 //    Source IP address
@@ -208,11 +209,16 @@ std::string createIPHeader(std::string checksum, std::string src_ip, std::string
 }
 
 
-std::string createUDPHeader() {
+std::string createUDPHeader(int src_port, int dest_port, std::string checksum) {
     std::string udp_header = "";
-
-
-
+//    Source port
+    udp_header += std::bitset<8>(src_port).to_string();
+//    Destination port
+    udp_header += std::bitset<8>(dest_port).to_string();
+//    Length = 8, because only udp header
+    udp_header += std::bitset<8>(8).to_string();
+//    Checksum
+    udp_header += hexToBin(checksum.c_str());
     return udp_header;
 }
 
@@ -243,7 +249,7 @@ std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int po
 
 //              Error number 14 means bad address, but it receives the correct info. So it works.
                 if (errno == 14) {
-//                    printf("%s\n", recv_buff);
+                    printf("%s\n", recv_buff);
                     char first_char = recv_buff[0];
                     if (first_char == key_char_group_2) {
                         std::string checksum = "";
@@ -263,9 +269,11 @@ std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int po
 //                        std::cout << checksum << "\n";
 //                        std::cout << chngd_src << "\n";
 
-//TODO: Create this msg correctly. It is a binary string with the IP-header followed by the UDP-header.
+//                        TODO: Set src port
+//                        Set to 0, because it doesn't matter
+                        int src_port = 0;
                         std::string special_msg = createIPHeader(checksum, chngd_src, dest_ip) +
-                                createUDPHeader();
+                                createUDPHeader(src_port, port_nr, checksum);
                         char buff_special_msg[1400];
                         strcpy(buff_special_msg, special_msg.c_str());
                         return(sendFinalmessage(sock, buff_special_msg, dest_ip, port_nr));
