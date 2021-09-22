@@ -112,9 +112,11 @@ std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, 
                 }
                 else {
 //                    Detects whether anything is received.
+//                    TODO: check the address, it's a pointer, or make sure the socket is connected
                     recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
                              reinterpret_cast<socklen_t *>(sizeof(destaddr)));
-//                    Error number 14 means bad address, but it receives the correct info. So it works.
+//                    Error number 14 means bad address, but it receives the correct info. So it works
+// TODO: So it makes more sense
                     if (errno == 14) {
 //                        The port is open, so we add the port number to the open ports vector
 //                        and the while loop is exited to continue the for loop, to check for other ports.

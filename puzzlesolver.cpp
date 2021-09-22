@@ -30,12 +30,7 @@ int main(int argc, char *argv[]) {
     std::vector<int> open_ports;
 
 //    The UDP socket
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-//    If the program cannot open a socket, raise an error and stop.
-    if (sock < 0) {
-        perror("Cannot open socket");
-        return(-1);
-    }
+    int sock = socket_creation();
     struct sockaddr_in destaddr = sock_opts(sock, dest_ip, timeout_ms);
 
 //    The msg sent to the port
@@ -84,7 +79,7 @@ int main(int argc, char *argv[]) {
 
         int from = 4000;
         int to = 4100;
-        open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len, 20);
+        open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len, no_of_retries);
     }
 
     sendMessage(open_ports, sock, buffer, dest_ip);
