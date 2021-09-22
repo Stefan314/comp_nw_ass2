@@ -14,8 +14,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sstream>
+#include <bitset>
 
 int NO_OF_RETRIES = 10;
+int CHECKSUM_START_IND = 144;
+int SRC_IP_START_IND = 186;
 
 void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::string dest_ip);
 
@@ -31,13 +34,10 @@ int main(int argc, char *argv[]) {
 
 //    The UDP socket
     int sock = socket_creation();
-    struct sockaddr_in destaddr = sock_opts(sock, dest_ip, timeout_ms);
 
 //    The msg sent to the port
     char buffer[1400];
     strcpy(buffer, "Hey Port");
-
-    int buff_len = strlen(buffer) + 1;
 //    Take care of given arguments. We want 1 or 4 arguments, 'ip-address',
 //    and optional 'port 1', 'port 2', 'port 3', and 'port 4' respectively.
 //    The first argument is the ip-address of the destination.
@@ -86,7 +86,140 @@ int main(int argc, char *argv[]) {
 }
 
 
+std::string hexToBin(const char *hex) {
+    std::string result = "";
+    for (int i = 0; i < strlen(hex); i++) {
+        switch (hex[i]) {
+            case '0':
+                result += "0000";
+                break;
+            case '1':
+                result += "0001";
+                break;
+            case '2':
+                result += "0010";
+                break;
+            case '3':
+                result += "0011";
+                break;
+            case '4':
+                result += "0100";
+                break;
+            case '5':
+                result += "0101";
+                break;
+            case '6':
+                result += "0110";
+                break;
+            case '7':
+                result += "0111";
+                break;
+            case '8':
+                result += "1000";
+                break;
+            case '9':
+                result += "1001";
+                break;
+            case 'A':
+            case 'a':
+                result += "1010";
+                break;
+            case 'B':
+            case 'b':
+                result += "1011";
+                break;
+            case 'C':
+            case 'c':
+                result += "1100";
+                break;
+            case 'D':
+            case 'd':
+                result += "1101";
+                break;
+            case 'E':
+            case 'e':
+                result += "1110";
+                break;
+            case 'F':
+            case 'f':
+                result += "1111";
+                break;
+        }
+    }
+    return result;
+}
+
+
+std::string ipToBin(std::string ip) {
+    std::string result;
+
+    std::string delimiter = ".";
+
+    unsigned long prev_ind_occ = 0;
+    unsigned long ind_occ = ip.find(delimiter);
+    while (ind_occ != std::string::npos) {
+        unsigned long ind_diff = ind_occ - prev_ind_occ;
+        char *prefix = new char[ind_diff + 1];
+        strcpy(prefix, ip.substr(prev_ind_occ, ind_diff).c_str());
+        int ip_addr_part = char_pointer_to_int(prefix);
+        result += std::bitset<8>(ip_addr_part).to_string();
+        prev_ind_occ = ind_occ + 1;
+        ind_occ = ip.find(delimiter, prev_ind_occ);
+    }
+    unsigned long ind_diff = ip.size() - prev_ind_occ;
+    char *prefix = new char[ind_diff + 1];
+    strcpy(prefix, ip.substr(prev_ind_occ).c_str());
+    int ip_addr_part = char_pointer_to_int(prefix);
+    result += std::bitset<8>(ip_addr_part).to_string();
+
+    return result;
+}
+
+
+std::string createIPHeader(std::string checksum, std::string src_ip, std::string dest_ip) {
+    std::string ip_header = "";
+//    Version = 4, because ipv4
+    ip_header += std::bitset<4>(4).to_string();
+//    IHL = 5, because no options
+    ip_header += std::bitset<4>(5).to_string();
+//    DSCP = 0, because not necessary here
+    ip_header += std::bitset<6>(0).to_string();
+//    ECN = 0, because not necess here
+    ip_header += std::bitset<2>(0).to_string();
+//    Total length = 28, because IP + UDP header
+    ip_header += std::bitset<16>(28).to_string();
+//    Identification = 0, because not necessary here
+    ip_header += std::bitset<16>(0).to_string();
+//    Flags = 0, because doesn't matter here
+    ip_header += std::bitset<3>(0).to_string();
+//    Fragment offset = 0, data is at regular position
+    ip_header += std::bitset<13>(0).to_string();
+//    TTL = 250 so we can have a decent TTL
+    ip_header += std::bitset<8>(250).to_string();
+//    Protocol = 17, because UDP
+    ip_header += std::bitset<8>(17).to_string();
+//    Header checksum
+    ip_header += hexToBin(checksum.c_str());
+//    Source IP address
+    ip_header += ipToBin(src_ip);
+//    Destination IP address
+    ip_header += ipToBin(dest_ip);
+    return ip_header;
+}
+
+
+std::string createUDPHeader() {
+    std::string udp_header = "";
+
+
+
+    return udp_header;
+}
+
+
 std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int port_nr) {
+    char key_char_group_2 = 'H';
+
     std::string result = "";
 
     struct sockaddr_in destaddr;
@@ -111,6 +244,32 @@ std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int po
 //              Error number 14 means bad address, but it receives the correct info. So it works.
                 if (errno == 14) {
 //                    printf("%s\n", recv_buff);
+                    char first_char = recv_buff[0];
+                    if (first_char == key_char_group_2) {
+                        std::string checksum = "";
+                        std::string chngd_src = "";
+                        for (int i = CHECKSUM_START_IND; i < CHECKSUM_START_IND + 6; i++) {
+                            checksum += recv_buff[i];
+                        }
+                        int i = SRC_IP_START_IND;
+                        while (true) {
+                            char recv_char = recv_buff[i];
+                            if (!(isdigit(recv_char) || (recv_char == '.'))) {
+                                break;
+                            }
+                            chngd_src += recv_char;
+                            i++;
+                        }
+//                        std::cout << checksum << "\n";
+//                        std::cout << chngd_src << "\n";
+
+//TODO: Create this msg correctly. It is a binary string with the IP-header followed by the UDP-header.
+                        std::string special_msg = createIPHeader(checksum, chngd_src, dest_ip) +
+                                createUDPHeader();
+                        char buff_special_msg[1400];
+                        strcpy(buff_special_msg, special_msg.c_str());
+                        return(sendFinalmessage(sock, buff_special_msg, dest_ip, port_nr));
+                    }
                     memset(recv_buff, 0, sizeof(recv_buff));
                     break;
                 }
@@ -174,12 +333,15 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
                         } else if (first_char == key_char2) {
                             // Send "group_47"
 //    The msg sent to the port that should receive the group number
-//                            TODO: Fix the returned msg
                             char buff_special_msg[1400];
                             strcpy(buff_special_msg, "$group_47$");
                             secret_ports.push_back(sendFinalmessage(sock, buff_special_msg, dest_ip, curr_port));
                         } else if (first_char == key_char3) {
 //                            TODO: Send evil bit
+                            const char* special_msg = "";
+                            char buff_special_msg[1400];
+                            strcpy(buff_special_msg, special_msg);
+                            secret_ports.push_back(sendFinalmessage(sock, buff_special_msg, dest_ip, curr_port));
                         } else if (first_char == key_char4) {
                             // Find secret port in recv buffer
                             std::string sec_port;
@@ -210,7 +372,6 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
     }
     std::string secret_ports_csl;
     for (int i = 0; i < secret_ports.size(); i++) {
-        std::cout << secret_ports[i].c_str() << " boo\n";
         secret_ports_csl += secret_ports[i];
         if (i < secret_ports.size() - 1) {
             secret_ports_csl += ", ";
