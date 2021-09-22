@@ -10,6 +10,14 @@
 #include <iostream>
 #include <vector>
 #include "scanner.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sstream>
+
+
+void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::string dest_ip);
+
 
 int main(int argc, char *argv[]) {
 //    Default parameters which might be changed depending on how many arguments are given.
@@ -24,6 +32,7 @@ int main(int argc, char *argv[]) {
         return(-1);
     }
     struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
+
 
 //    The msg sent to the port
     char buffer[1400];
@@ -74,12 +83,110 @@ int main(int argc, char *argv[]) {
         open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len);
     }
 
-//    Send comma separated list
-    std::string kw1 = "I";
-//    Send $group_47$
-    std::string kw2 = "My";
-//    Send $group_47$
-    std::string kw3 = "The";
-//    Send to secret port. Message: My boss told me not to tell anyone that my secret port is 4001
-    std::string kw4 = "Send";
+    sendMessage(open_ports, sock, buffer, dest_ip);
+
+}
+
+
+void sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer, std::string dest_ip, int message_option, int port_nr) {
+    struct sockaddr_in destaddr;
+    // converting int to char const
+    /*char const *port_char = std::to_string(open_ports[0]).c_str();
+    strcpy(buffer, port_char);
+    */
+
+    if(message_option == 1){
+        strcpy(buffer, "group_47");
+    }
+        // Send to secret port. Message: My boss told me not to tell anyone that my secret port is port nr
+    else if(message_option == 2){
+        strcpy(buffer, "port_nr something");
+    }
+    else if(message_option == 3){
+        //"" should be response of port receiving groupnr.
+        strcpy(buffer, "TO DO");
+    }
+    //  The msg in the buffer
+    int length = strlen(buffer) + 1;
+    destaddr.sin_family = AF_INET;
+    inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
+    char recv_buff[1400];
+    destaddr.sin_port = htons(open_ports[port_nr]);
+    //  amount of times you want to try and send the message and try to receive one as well.
+    //  If it didn't receive anything, we conclude that the port is not open.
+    int retries = 20;
+    while(retries > 0) {
+        try {
+            if (sendto(sock, buffer, length, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
+                perror("Could not send");
+            }
+            else {
+//                      Detects whether anything is received.
+                recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
+                         reinterpret_cast<socklen_t *>(sizeof(destaddr)));
+//              Error number 14 means bad address, but it receives the correct info. So it works.
+                if (errno == 14) {
+                    break;
+                }
+                sendFinalmessage(open_ports, sock, buffer, dest_ip, 1, 3);
+                break;
+            }
+            retries--;
+        }
+        catch(const std::overflow_error& e){
+            throw "could not send";
+        }
+    }
+}
+
+void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::string dest_ip) {
+
+    for(int i = 1; i<4; i++){
+        struct sockaddr_in destaddr;
+        //  The msg in the buffer
+        strcpy(buffer, "Hey Port");
+        int length = strlen(buffer) + 1;
+        destaddr.sin_family = AF_INET;
+        inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
+        char recv_buff[1400];
+        destaddr.sin_port = htons(open_ports[i]);
+        //  amount of times you want to try and send the message and try to receive one as well.
+        //  If it didn't receive anything, we conclude that the port is not open.
+        int retries = 20;
+        while(retries > 0) {
+            try {
+                if (sendto(sock, buffer, length, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
+                    perror("Could not send");
+                }
+                else {
+//                    Detects whether anything is received.
+                    recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
+                             reinterpret_cast<socklen_t *>(sizeof(destaddr)));
+//                    Error number 14 means bad address, but it receives the correct info. So it works.
+                    if (errno == 14) {
+//                        The port is open, so we add the port number to the open ports vector
+//                        and the while loop is exited to continue the for loop, to check for other ports.
+                        open_ports.push_back(open_ports[i]);
+                        break;
+                    }
+                    memset(recv_buff, 0, sizeof(recv_buff));
+                    // if it's the second or third port
+                    if (i == 1 || i == 2){
+                        // Send "group_47"
+                        sendFinalmessage(open_ports, sock, buffer, dest_ip, 1, i);
+                    }
+                    else if (i == 3){
+                        // send .... (we don't know yet)
+                        sendFinalmessage(open_ports, sock, buffer, dest_ip, 2, i);
+                    }
+                    memset(recv_buff, 0, sizeof(recv_buff));
+                    break;
+                }
+                retries--;
+            }
+            catch(const std::overflow_error& e){
+                throw "could not send";
+            }
+        }
+    }
 }
