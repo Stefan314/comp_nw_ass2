@@ -204,7 +204,7 @@ void sendMessage(std::vector<int> open_ports, int sock, char* buffer, std::strin
                     else{
                         if (first_variable == kw1){
                             // TO DO:
-                            // send csl to the '1st port'/keyword
+                            // send csl to 1st port
                         }
 
 
