@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
 }
 
 
-std::string sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer, std::string dest_ip, int port_nr) {
+std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int port_nr) {
     std::string result = "";
 
     struct sockaddr_in destaddr;
@@ -95,7 +95,7 @@ std::string sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer
     destaddr.sin_family = AF_INET;
     inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
     char recv_buff[1400];
-    destaddr.sin_port = htons(open_ports[port_nr]);
+    destaddr.sin_port = htons(port_nr);
     //  amount of times you want to try and send the message and try to receive one as well.
     //  If it didn't receive anything, we conclude that the port is not open.
     int retries = NO_OF_RETRIES;
@@ -110,8 +110,11 @@ std::string sendFinalmessage(std::vector<int> open_ports, int sock, char* buffer
 
 //              Error number 14 means bad address, but it receives the correct info. So it works.
                 if (errno == 14) {
-                    printf("%s\n", recv_buff);
+//                    printf("%s\n", recv_buff);
+                    memset(recv_buff, 0, sizeof(recv_buff));
+                    break;
                 }
+                memset(recv_buff, 0, sizeof(recv_buff));
             }
             retries--;
         }
@@ -129,12 +132,16 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
     //    Send comma separated list
     char key_char1 = 'I';
     //    Send $group_47$
-    char key_char2 = 'M';
+//    Receive:
+//    Hello, group_47! To get the secret phrase, send me a udp message where the payload is a valid UDP IPv4 packet,
+//    that has a valid UDP checksum of 0x7a29, and with the source address being 47.29.57.150!
+//    (the last 6 bytes of this message contain this information in network order)z)/9
+    char key_char2 = 'S';
     //    Send $group_47$, with evil bit
     char key_char3 = 'T';
     //    Find secret port, recv_buff[-5:-1]
-    char key_char4 = 'S';
-    std::string secret_ports = "";
+    char key_char4 = 'M';
+    std::vector<std::string> secret_ports;
 
     for (int i; i < 4; i++) {
         int curr_port = open_ports[i];
@@ -168,18 +175,21 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
                         } else if (first_char == key_char2) {
                             // Send "group_47"
 //    The msg sent to the port that should receive the group number
+//                            TODO: Fix the returned msg
                             char buff_special_msg[1400];
                             strcpy(buff_special_msg, "$group_47$");
-                            secret_ports += sendFinalmessage(open_ports, sock,
-                                                             buff_special_msg, dest_ip, curr_port) + ", ";
+                            secret_ports.push_back(sendFinalmessage(sock, buff_special_msg, dest_ip, curr_port));
                         } else if (first_char == key_char3) {
 //                            TODO: Send evil bit
                         } else if (first_char == key_char4) {
+//                            TODO: Fix finding the port
                             // Find secret port in recv buffer
+                            std::string sec_port;
                             int recv_buff_len = sizeof(recv_buff) / sizeof(recv_buff[0]);
                             for (int j = recv_buff_len - 5; j < recv_buff_len - 1; j++) {
-                                secret_ports += recv_buff[i];
+                                sec_port += recv_buff[i];
                             }
+                            secret_ports.push_back(sec_port);
                         }
                         break;
                     }
@@ -192,7 +202,16 @@ void sendMessage(std::vector<int> open_ports, int sock, char *buffer, std::strin
             }
         }
     }
+    std::string secret_ports_csl;
+    for (int i = 0; i < secret_ports.size(); i++) {
+        std::cout << secret_ports[i].c_str() << " boo\n";
+        secret_ports_csl += secret_ports[i];
+        if (i < secret_ports.size() - 1) {
+            secret_ports_csl += ", ";
+        }
+    }
+    std::cout << secret_ports_csl.c_str() << "\n";
     char buff_special_msg[1400];
-    strcpy(buff_special_msg, "$group_47$");
-    sendFinalmessage(open_ports, sock, buff_special_msg, dest_ip, csl_port);
+    strcpy(buff_special_msg, secret_ports_csl.c_str());
+    sendFinalmessage(sock, buff_special_msg, dest_ip, csl_port);
 }
