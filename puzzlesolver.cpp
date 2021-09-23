@@ -86,9 +86,19 @@ int main(int argc, char *argv[]) {
 }
 
 
+void debugPrint(const std::string& arg_name, const std::string& arg) {
+//    std::cout << arg_name + "=" << arg << "\n";
+}
+
+
+void debugPrint(const std::string& arg_name, unsigned long arg) {
+    debugPrint(arg_name, std::to_string(arg));
+}
+
+
 std::string hexToBin(const char *hex) {
-    std::string result = "";
-//    std::cout << hex << "\n";
+    std::string result;
+    debugPrint("hex", hex);
     for (int i = 2; i < strlen(hex); i++) {
         switch (hex[i]) {
             case '0':
@@ -147,30 +157,34 @@ std::string hexToBin(const char *hex) {
                 break;
         }
     }
-//    std::cout << result << "\n";
+    debugPrint("bin", result);
     return result;
 }
 
 
 std::string subOneFromBin(std::string bin) {
-    char last_bit = bin.at(strlen(bin.c_str()) - 1);
+    char last_bit = bin.at(bin.size() - 1);
     std::string replacement = "0";
     switch(last_bit) {
         case '0':
             replacement = "1";
-            bin = subOneFromBin(bin.substr(0, strlen(bin.c_str()) - 2)) + replacement;
+            if (bin.size() > 1) {
+                bin = subOneFromBin(bin.substr(0, bin.size() - 1)) + replacement;
+            }
             break;
         case '1':
             replacement = "0";
             break;
+        default:
+            break;
     }
-    bin.replace(strlen(bin.c_str()) - 1, 1, replacement);
+    bin.replace(bin.size() - 1, 1, replacement);
     return bin;
 }
 
 
 std::string addOneToHex(std::string hex) {
-    char last_hex = hex.at(strlen(hex.c_str()) - 1);
+    char last_hex = hex.at(hex.size() - 1);
     std::string replacement = "0";
     switch(last_hex) {
         case '0':
@@ -226,7 +240,12 @@ std::string addOneToHex(std::string hex) {
         case 'F':
         case 'f':
             replacement = "0";
-            hex = addOneToHex(hex.substr(0, strlen(hex.c_str()) - 2)) + replacement;
+            if (hex.size() == 1) {
+                hex = "0" + hex;
+            }
+            hex = addOneToHex(hex.substr(0, strlen(hex.c_str()) - 1)) + replacement;
+            break;
+        default:
             break;
     }
     hex.replace(strlen(hex.c_str()) - 1, 1, replacement);
@@ -234,38 +253,50 @@ std::string addOneToHex(std::string hex) {
 }
 
 
-std::string binHectToHexHect(std::string bin_hect) {
-    std::string hex_hect = "0";
+std::string binHectToHexHect(const std::string& bin_hect) {
+    std::string hex_hect = "0000";
     int step_size = 4;
-    for (int i = 0; i < strlen(bin_hect.c_str()); i += step_size) {
+    debugPrint("bin_hect", bin_hect);
+    for (int i = 0; i < bin_hect.size(); i += step_size) {
         std::string hex_as_bin = bin_hect.substr(i, step_size);
+        debugPrint("hex_as_bin", hex_as_bin);
         std::string zero_string = "0000";
-        while (hex_as_bin == zero_string) {
+        while (hex_as_bin != zero_string) {
             hex_as_bin = subOneFromBin(hex_as_bin);
+            debugPrint("hex_as_bin", hex_as_bin);
             hex_hect = addOneToHex(hex_hect);
+            debugPrint("hex_hect", hex_hect);
         }
     }
     return hex_hect;
 }
 
 
-std::string binToHex(std::string bin) {
-    std::string hex = "";
+std::string binToHex(const std::string& bin) {
+    std::string hex;
     int step_size = 16;
-    for (int i = 0; i < strlen(bin.c_str()); i += step_size) {
-        hex += binHectToHexHect(bin.substr(i, step_size));
+    for (int i = 0; i < bin.size(); i += step_size) {
+        std::string bin_hect = bin.substr(i, step_size);
+        debugPrint("bin_hect", bin_hect);
+        debugPrint("bin_sz", bin.size());
+        std::string hex_hect = binHectToHexHect(bin_hect);
+        debugPrint("hex_hect", hex_hect);
+        hex += hex_hect;
     }
+//    printf("\n");
     return hex;
 }
 
 
 std::string subOneFromHex(std::string hex) {
-    char last_hex = hex.at(strlen(hex.c_str()) - 1);
+    char last_hex = hex.at(hex.size() - 1);
     std::string replacement = "0";
     switch(last_hex) {
         case '0':
             replacement = "f";
-            hex = subOneFromHex(hex.substr(0, strlen(hex.c_str()) - 2)) + replacement;
+            if (hex.size() > 1) {
+                hex = subOneFromHex(hex.substr(0, strlen(hex.c_str()) - 1)) + replacement;
+            }
             break;
         case '1':
             replacement = "0";
@@ -317,6 +348,8 @@ std::string subOneFromHex(std::string hex) {
         case 'F':
         case 'f':
             replacement = "e";
+            break;
+        default:
             break;
     }
     hex.replace(strlen(hex.c_str()) - 1, 1, replacement);
@@ -325,33 +358,36 @@ std::string subOneFromHex(std::string hex) {
 
 
 std::string addHectets(std::string hectet1, std::string hectet2) {
-    std::string hectet_sum = hectet1;
     std::string zero_hect = "0000";
 
     while (hectet2 != zero_hect) {
-        hectet_sum = addOneToHex(hectet_sum);
+        hectet1 = addOneToHex(hectet1);
         hectet2 = subOneFromHex(hectet2);
     }
 
-    return hectet_sum;
+    return hectet1;
 }
 
 
 std::string hectetSum(std::string hex) {
     std::string hectet_sum = "0000";
 
-    while (strlen(hex.c_str()) > 0) {
-        std::string hectet = hex.substr(0, 4);
-        hex = hex.substr(4, strlen(hex.c_str()) - 4);
-        hectet_sum = addHectets(hectet_sum, hectet);
-    }
+    while (!hex.empty()) {
+        debugPrint("hex", hex);
 
+        std::string hectet = hex.substr(0, 4);
+        debugPrint("hectet", hectet);
+
+        hex = hex.substr(4, hex.size() - 4);
+        hectet_sum = addHectets(hectet_sum, hectet);
+        debugPrint("hectet_sum", hectet_sum);
+    }
     return hectet_sum;
 }
 
 
-std::string invHect(std::string hect) {
-    std::string inv_hect = "";
+std::string invHect(const std::string& hect) {
+    std::string inv_hect;
 
     for (auto &&hex : hect) {
         switch(hex) {
@@ -409,16 +445,17 @@ std::string invHect(std::string hect) {
             case 'f':
                 inv_hect += "0";
                 break;
+            default:
+                break;
         }
     }
-    std::cout << "inv_hect=" << inv_hect << "\n";
-
+    debugPrint("inv_hect", inv_hect);
     return inv_hect;
 }
 
 
-std::string ipToBin(std::string ip) {
-//    std::cout << ip << "\n";
+std::string ipToBin(const std::string& ip) {
+    debugPrint("ip", ip);
     std::string result;
 
     std::string delimiter = ".";
@@ -440,31 +477,34 @@ std::string ipToBin(std::string ip) {
     int ip_addr_part = char_pointer_to_int(prefix);
     result += std::bitset<8>(ip_addr_part).to_string();
 
-//    std::cout << result << "\n";
+    debugPrint("ip_bin", result);
     return result;
 }
 
 
-std::string ipCheckSum(std::string partial_ip_header, std::string src_ip_bin, std::string dest_ip_bin) {
+std::string ipCheckSum(const std::string& partial_ip_header, const std::string& src_ip_bin,
+                       const std::string& dest_ip_bin) {
     std::string ip_header_no_check = partial_ip_header + src_ip_bin + dest_ip_bin;
-    std::cout << "iphnc=" << ip_header_no_check << "\n";
-    std::string ip_h_nc_hex = binToHex(ip_header_no_check);
-    std::cout << "iphnc_hex=" << ip_h_nc_hex << "\n";
-    std::string hect_sum = hectetSum(ip_h_nc_hex);
-    std::cout << "h_sum=" << hect_sum << "\n";
+    debugPrint("iphnc", ip_header_no_check);
 
-    while (strlen(hect_sum.c_str()) > 4) {
-        hect_sum = "000" + hect_sum;
-        hect_sum = hectetSum(hect_sum);
+    std::string ip_h_nc_hex = binToHex(ip_header_no_check);
+    debugPrint("iphnc_hex", ip_h_nc_hex);
+
+    std::string hect_sum = hectetSum(ip_h_nc_hex);
+    debugPrint("h_sum", hect_sum);
+
+    std::string threeHexZero = "000";
+    while (hect_sum.size() > 4) {
+        hect_sum = hectetSum(threeHexZero + hect_sum);
     }
-    std::cout << "h_sum=" << hect_sum << "\n";
+    debugPrint("h_sum", hect_sum);
 
     return invHect(hect_sum);
 }
 
 
-std::string createIPHeader(std::string checksum, std::string src_ip, std::string dest_ip) {
-    std::string ip_header = "";
+std::string createIPHeader(const std::string& checksum, const std::string& src_ip, const std::string& dest_ip) {
+    std::string ip_header;
 //    Version = 4, because ipv4
     ip_header += std::bitset<4>(4).to_string();
 //    IHL = 5, because no options
@@ -483,10 +523,10 @@ std::string createIPHeader(std::string checksum, std::string src_ip, std::string
     ip_header += std::bitset<13>(0).to_string();
 //    TTL = 250 so we can have a decent TTL
     ip_header += std::bitset<8>(250).to_string();
-//    std::cout << "ip " << strlen(ip_header.c_str()) << "\n";
+    debugPrint("ip_size", ip_header.size());
 //    Protocol = 17, because UDP
     ip_header += std::bitset<8>(17).to_string();
-//    std::cout << "ip " << strlen(ip_header.c_str()) << "\n";
+    debugPrint("ip_size", ip_header.size());
 
 //    Bit strings of ip-addresses
     std::string src_ip_bin = ipToBin(src_ip);
@@ -495,31 +535,31 @@ std::string createIPHeader(std::string checksum, std::string src_ip, std::string
 //    TODO: Do we need the checksum here?
 //    Header checksum
 //    ip_header += std::bitset<16>(0).to_string();
-    ip_header += hexToBin(checksum.c_str());
-//    ip_header += ipCheckSum(ip_header, src_ip_bin, dest_ip_bin);
+//    ip_header += hexToBin(checksum.c_str());
+    ip_header += ipCheckSum(ip_header, src_ip_bin, dest_ip_bin);
 //    Source IP address
     ip_header += src_ip_bin;
-//    std::cout << "ip " << strlen(ip_header.c_str()) << "\n";
+    debugPrint("ip_size", ip_header.size());
 //    Destination IP address
     ip_header += dest_ip_bin;
-//    std::cout << "ip " << strlen(ip_header.c_str()) << "\n";
+    debugPrint("ip_size", ip_header.size());
     return ip_header;
 }
 
 
-std::string createUDPHeader(int src_port, int dest_port, std::string checksum) {
-    std::string udp_header = "";
+std::string createUDPHeader(int src_port, int dest_port, const std::string& checksum) {
+    std::string udp_header;
 //    Source port
     udp_header += std::bitset<16>(src_port).to_string();
 //    Destination port
     udp_header += std::bitset<16>(dest_port).to_string();
-//    std::cout << "udp " << strlen(udp_header.c_str()) << "\n";
+    debugPrint("udp_size", udp_header.size());
 //    Length = 8, because only udp header
     udp_header += std::bitset<16>(8).to_string();
-//    std::cout << "udp " << strlen(udp_header.c_str()) << "\n";
+    debugPrint("udp_size", udp_header.size());
 //    Checksum
     udp_header += hexToBin(checksum.c_str());
-//    std::cout << "udp " << strlen(udp_header.c_str()) << "\n";
+    debugPrint("udp_size", udp_header.size());
     return udp_header;
 }
 
@@ -568,8 +608,8 @@ std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int po
                             chngd_src += recv_char;
                             i++;
                         }
-//                        std::cout << checksum << "\n";
-//                        std::cout << chngd_src << "\n";
+                        debugPrint("checksum", checksum);
+                        debugPrint("new_src_ip", chngd_src);
 
 //                        Used to get the source port number
                         struct sockaddr_in sin;
