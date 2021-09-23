@@ -240,7 +240,7 @@ std::string binHectToHexHect(std::string bin_hect) {
     for (int i = 0; i < strlen(bin_hect.c_str()); i += step_size) {
         std::string hex_as_bin = bin_hect.substr(i, step_size);
         std::string zero_string = "0000";
-        while (std::equal(hex_as_bin.begin(), hex_as_bin.end(), zero_string.begin(), zero_string.end())) {
+        while (hex_as_bin == zero_string) {
             hex_as_bin = subOneFromBin(hex_as_bin);
             hex_hect = addOneToHex(hex_hect);
         }
@@ -253,7 +253,7 @@ std::string binToHex(std::string bin) {
     std::string hex = "";
     int step_size = 16;
     for (int i = 0; i < strlen(bin.c_str()); i += step_size) {
-        hex += binHectToHexHect(hex.substr(i, step_size));
+        hex += binHectToHexHect(bin.substr(i, step_size));
     }
     return hex;
 }
@@ -328,7 +328,7 @@ std::string addHectets(std::string hectet1, std::string hectet2) {
     std::string hectet_sum = hectet1;
     std::string zero_hect = "0000";
 
-    while (!std::equal(hectet2.begin(), hectet2.end(), zero_hect.begin(), zero_hect.end())) {
+    while (hectet2 != zero_hect) {
         hectet_sum = addOneToHex(hectet_sum);
         hectet2 = subOneFromHex(hectet2);
     }
