@@ -572,7 +572,7 @@ std::string binToChars(const std::string& bin) {
 }
 
 
-std::string createIPHeader(const std::string& src_ip, const std::string& dest_ip) {
+std::string createIPHeader(const std::string& src_ip, const std::string& dest_ip, int flag) {
     std::string ip_header;
 //    Creation of all the header fields.
 //    Version = 4, because ipv4
@@ -588,7 +588,7 @@ std::string createIPHeader(const std::string& src_ip, const std::string& dest_ip
 //    Identification = 0, because not necessary here
     std::string id = std::bitset<16>(0).to_string();
 //    Flags = 0, because doesn't matter here
-    std::string flags = std::bitset<3>(0).to_string();
+    std::string flags = std::bitset<3>(flag).to_string();
 //    Fragment offset = 0, data is at regular position
     std::string frag_off = std::bitset<13>(0).to_string();
 //    TTL = 250 so we can have a decent TTL
@@ -774,6 +774,7 @@ uint32_t hexToInt(const std::string& hex) {
 
 std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int port_nr) {
     char key_char_group_2 = 'H';
+    char key_char_group_3 = 'T';
 
     std::string result = "";
 
@@ -831,7 +832,7 @@ std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int po
                         std::string udp_header;
 
 //                        TODO: Choose between either structs or custom
-                        ip_header = createIPHeader(chngd_src, dest_ip);
+                        ip_header = createIPHeader(chngd_src, dest_ip, 0);
                         udp_header = createUDPHeader(src_port, port_nr, checksum, chngd_src, dest_ip);
 
                         struct iphdr ip_hdr;
@@ -846,6 +847,40 @@ std::string sendFinalmessage(int sock, char* buffer, std::string dest_ip, int po
                         special_msg = ip_header + udp_header;
                         debugPrint("msg", special_msg, false);
 
+//                        Creation of the buffer
+                        char buff_special_msg[1400];
+                        strcpy(buff_special_msg, special_msg.c_str());
+                        return(sendFinalmessage(sock, buff_special_msg, dest_ip, port_nr));
+                    }
+                    else if (first_char == key_char_group_3) {
+                        std::string checksum = "";
+                        std::string chngd_src = "";
+                        for (int i = CHECKSUM_START_IND; i < CHECKSUM_START_IND + 6; i++) {
+                            checksum += recv_buff[i];
+                        }
+//                        Gets the checksum and the source ip for the next msg from this msg
+                        int i = SRC_IP_START_IND;
+                        while (true) {
+                            char recv_char = recv_buff[i];
+                            if (!(isdigit(recv_char) || (recv_char == '.'))) {
+                                break;
+                            }
+                            chngd_src += recv_char;
+                            i++;
+                        }
+                        debugPrint("checksum", checksum);
+                        debugPrint("new_src_ip", chngd_src);
+
+//                        Used to get the source port number
+                        struct sockaddr_in sin;
+                        socklen_t sin_len = sizeof(sin);
+                        if (getsockname(sock, (struct sockaddr *)&sin, &sin_len) == -1) {
+                            perror("getsockname");
+                        }
+                        int src_port = ntohs(sin.sin_port);
+//                        The msg that needs to be sent
+                        std::string special_msg = createIPHeader(chngd_src, dest_ip, 4) +
+                                                  createUDPHeader(src_port, port_nr, checksum, chngd_src, dest_ip);
 //                        Creation of the buffer
                         char buff_special_msg[1400];
                         strcpy(buff_special_msg, special_msg.c_str());
