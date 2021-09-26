@@ -1,10 +1,30 @@
-struct sockaddr_in sock_opts(int sock, const std::string& dest_ip, int timeout_ms);
+#include <vector>
+#include <string>
+using namespace std;
 
-int socket_creation();
+extern int noOfRetries;
+// In milliseconds
+extern int timeout;
+extern bool debug;
 
-int char_pointer_to_int(std::basic_string<char> argument);
+struct sockaddr_in sockOpts(int sock, const string &dest_ip);
 
-void check_ip(const char *argument);
+int socketCreation();
 
-std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock,
-                                 const void *buff, size_t buff_len, int no_of_retries);
+bool checkIp(const string& argument);
+
+vector<int> findOpenPorts(const string &dest_ip, int from, int to, int sock, int max_ports);
+
+string sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports);
+
+string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port);
+
+void debugPrint(const string &arg_name, const string &arg, bool debug_override);
+
+void debugPrint(const string &arg_name, unsigned long arg, bool debug_override);
+
+void runScanner(int argc, char *argv[]);
+
+vector<string> split(const string& str_to_split, const string& delim);
+
+vector<int> stringVecToIntVec(const vector<string>& str_vec);

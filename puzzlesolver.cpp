@@ -21,12 +21,8 @@
 #include <algorithm>
 using namespace std;
 
-int noOfRetries = 20;
-// In milliseconds
-int timeout = 400;
 bool hardCodeHiddenPorts = true;
 // Used for testing TODO: Set all to false in final version.
-bool debug = false;
 bool hardCodedPorts = true;
 bool testCustomHeader = false;
 //    The payload if the program needs to send the group number.
@@ -43,14 +39,6 @@ uint16_t removeShortOverflow(uint32_t header_sum);
 uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& dest_ip);
 
 string invBin(string bin);
-
-uint16_t ipToShort(const string& ip);
-
-uint32_t hexToInt(const string& hex);
-
-void debugPrint(const string &arg_name, const string &arg, bool debug_override);
-
-void debugPrint(const string &arg_name, unsigned long arg, bool debug_override);
 
 string hexToBin(const string& hexadec);
 
@@ -78,14 +66,6 @@ char binToChar(const string& bin);
 
 string binToChars(const string& bin);
 
-vector<string> split(const string& str_to_split, const string& delim);
-
-vector<int> stringVecToIntVec(const vector<string>& str_vec);
-
-string sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports);
-
-string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port);
-
 string checksumPortHandler(int sock, const string &dest_ip, const int &port);
 
 string evilBitHandler(int sock, const string &destIP, const int &port);
@@ -98,25 +78,31 @@ string oraclePortHandler(int sock, vector<string> secret_ports, const string& de
 
 string oraclePortHandler2(int sock, const string &dest_ip, string response);
 
-int main(int argc, char *argv[]) {
-//    Default parameters which might be changed depending on how many arguments are given.
-//    Default ip-address
+void runPuzzle(int argc, char *argv[]);
+
+// TODO: UNCOMMENT THIS FOR THE FINAL VERSION
+//int main(int argc, char *argv[]) {
+//    runPuzzle(argc, argv);
+//}
+
+void runPuzzle(int argc, char *argv[]) {
+//    Default ip-address, in case the user did not enter any parameters.
     string dest_ip = "130.208.242.120";
 //    The secret ports
     vector<int> open_ports;
 
 //    The UDP socket
-    int sock = socket_creation();
-    struct sockaddr_in destaddr = sock_opts(sock, dest_ip, timeout);
+    int sock = socketCreation();
+    struct sockaddr_in dest_address = sockOpts(sock, dest_ip);
 
 //    The msg sent to the port
     char buffer[1400];
     int buff_len = sizeof(buffer);
     strcpy(buffer, "Hey Port");
-//    Take care of given arguments. We want 1 or 4 arguments, 'ip-address',
-//    and optional 'port 1', 'port 2', 'port 3', and 'port 4' respectively.
-//    The first argument is the ip-address of the destination.
-//    The ones after that are the open ports.
+/* Take care of given arguments. We want 1 or 4 arguments, 'ip-address',
+ * and optional 'port 1', 'port 2', 'port 3', and 'port 4' respectively.
+ * The first argument is the ip-address of the destination.
+ * The ones after that are the open ports. */
 
 //    Too many arguments were given, only use the useful ones. And let the user know they are stupid.
     if (argc > 6) {
@@ -126,19 +112,20 @@ int main(int argc, char *argv[]) {
 
     if (argc > 5) {
         dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
-        open_ports.push_back(char_pointer_to_int(argv[2]));
-        open_ports.push_back(char_pointer_to_int(argv[3]));
-        open_ports.push_back(char_pointer_to_int(argv[4]));
-        open_ports.push_back(char_pointer_to_int(argv[5]));
+        checkIp(dest_ip);
+        open_ports.push_back(stoi(argv[2], nullptr, 10));
+        open_ports.push_back(stoi(argv[3], nullptr, 10));
+        open_ports.push_back(stoi(argv[4], nullptr, 10));
+        open_ports.push_back(stoi(argv[5], nullptr, 10));
     } else {
         int given_no_of_open_ports = 0;
-        const char* dest_ip_c = dest_ip.c_str();
         if (argc > 1) {
             given_no_of_open_ports = argc - 2;
             dest_ip = argv[1];
-            check_ip(dest_ip_c);
+            const char* dest_ip_c = dest_ip.c_str();
+            checkIp(dest_ip_c);
         } else {
+            const char* dest_ip_c = dest_ip.c_str();
             printf("You have not entered an ip-address. The default ip-address will be used. This is %s.\n",
                    dest_ip_c);
         }
@@ -154,21 +141,10 @@ int main(int argc, char *argv[]) {
             open_ports.push_back(4098);
             open_ports.push_back(4099);
         } else {
-            open_ports = find_open_ports(destaddr, from, to, sock, buffer, buff_len, noOfRetries);
+            open_ports = findOpenPorts(dest_ip, from, to, sock, 4);
         }
     }
-
     messageHandler(open_ports, sock, buffer, dest_ip);
-}
-
-void debugPrint(const string &arg_name, const string &arg, bool debug_override) {
-    if (debug || debug_override) {
-        cout << arg_name + "=" << arg << "\n";
-    }
-}
-
-void debugPrint(const string &arg_name, unsigned long arg, bool debug_override) {
-    debugPrint(arg_name, to_string(arg), debug_override);
 }
 
 /**
@@ -378,11 +354,11 @@ string incrementHex(string hex, int increment) {
 }
 
 string hexAddition(string hex1, string hex2) {
-    bool hex2_is_zeroes = all_of(hex2.begin(), hex2.end(), '0');
+    bool hex2_is_zeroes = (hex2.find('0') == std::string::npos);
     while (!hex2_is_zeroes) {
         hex1 = incrementHex(hex1, 1);
         hex2 = decrementHex(hex2, 1);
-        hex2_is_zeroes = all_of(hex2.begin(), hex2.end(), '0');
+        hex2_is_zeroes = (hex2.find('0') == std::string::npos);
     }
     return hex1;
 }
@@ -483,16 +459,6 @@ string ipToBin(const string& ip) {
     return result;
 }
 
-vector<int> stringVecToIntVec(const vector<string>& str_vec) {
-    vector<int> result;
-
-    result.reserve(str_vec.size());
-    for (const string& str : str_vec) {
-        result.push_back(char_pointer_to_int(str));
-    }
-    return result;
-}
-
 uint16_t ipChecksum(struct iphdr ip_hdr) {
     string vers = bitset<4>(ip_hdr.version).to_string();
     string ihl = bitset<4>(ip_hdr.ihl).to_string();
@@ -555,7 +521,7 @@ string binToChars(const string& bin) {
 }
 
 struct iphdr createIPHeader(const string& src_ip, const string& dest_ip, unsigned int flag) {
-    struct iphdr ip_hdr;
+    struct iphdr ip_hdr{};
 //    Creation of all the header fields.
 //    Version = 4, because ipv4
     unsigned int version = htons(4);
@@ -729,7 +695,7 @@ bool binLarger(string bin1, string bin2) {
 
 struct udphdr createUDPHeader(int dest_port, const string& checksum, const string& src_ip,
                             const string& dest_ip) {
-    struct udphdr udp_hdr;
+    struct udphdr udp_hdr{};
 //    Creation of the header fields
 //    Source port = 0, will be changed later
     uint16_t src = htons(0);
@@ -740,7 +706,7 @@ struct udphdr createUDPHeader(int dest_port, const string& checksum, const strin
 //    Checksum
     debugPrint("check, pre-stoi", checksum, false);
     uint16_t check = htons(stoi(checksum, nullptr, 16));
-    debugPrint("check, post-stroi", check, false);
+    debugPrint("check, post-stoi", check, false);
 
 //    Partial creation of the UDP header
     udp_hdr.dest = dest;
@@ -753,25 +719,6 @@ struct udphdr createUDPHeader(int dest_port, const string& checksum, const strin
 //    Create the remainder of the header
     udp_hdr.source = src;
     return udp_hdr;
-}
-
-vector<string> split(const string& str_to_split, const string& delim) {
-    vector<string> split_string;
-
-    unsigned long prev_occur_idx = 0;
-    unsigned long occur_idx = str_to_split.find(delim);
-    while (occur_idx != string::npos) {
-        unsigned long ind_diff = occur_idx - prev_occur_idx;
-        string string_before_delim = str_to_split.substr(prev_occur_idx, ind_diff);
-        split_string.push_back(string_before_delim);
-        prev_occur_idx = occur_idx + delim.size();
-        occur_idx = str_to_split.find(delim, prev_occur_idx);
-    }
-    unsigned long ind_diff = occur_idx - prev_occur_idx;
-    string string_before_delim = str_to_split.substr(prev_occur_idx, ind_diff);
-    split_string.push_back(string_before_delim);
-    
-    return split_string;
 }
 
 void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const string& dest_ip) {
@@ -826,7 +773,7 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
     char key_char4 = 'M';
 
     for (auto&& open_port : open_ports) {
-//        Used for testing msg where we put custom headers in the payload. Should not be run during the final version.
+//        Used for testing msg where we put custom headers in the payload. Should not be runScanner during the final version.
         if (testCustomHeader and open_port != 4097) {
             continue;
         }
@@ -1023,7 +970,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
 //    Checksum
     debugPrint("check, pre-stoi", new_UDP_checksum, false);
     uint16_t check = htons(stoi(new_UDP_checksum, nullptr, 16));
-    debugPrint("check, post-stroi", check, false);
+    debugPrint("check, post-stoi", check, false);
 
 //    Partial creation of the UDP-header
     udp_hdr->dest = dest;
@@ -1079,71 +1026,4 @@ string evilBitHandler(int sock, const string &destIP, const int &port) {
 //      secret_ports.push_back(response);
     }
     return "";
-}
-
-/**
- * Tries to send a message and receive the response to the ports in the same order they are given in
- * @param sock The socket it needs to send the messages to
- * @param buffer The message that needs to be sent.
- * @param dest_ip The ip-address that needs to receive the message.
- * @param dest_ports The ports that the message need to be sent to.
- * @return The received message if there is any. If there is no response, then it will return the empty string.
- */
-string sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports) {
-/* This character represents the first character of the message saying that there was a checksum error server-side.
- * The program will retry that port. */
-    char error_char = 'R';
-    struct sockaddr_in dest_addres{};
-    dest_addres.sin_family = AF_INET;
-    inet_aton(dest_ip.c_str(), &dest_addres.sin_addr);
-    char recv_buff[1400];
-/* Amount of times you want to try and send the message and try to receive one as well.
- * If it didn't receive anything, we conclude that the port is not open. */
-    for (int i = 0; i < noOfRetries; i++)  {
-//        Sends the ports in the given order
-        for (auto&& dest_port : dest_ports) {
-            dest_addres.sin_port = htons(dest_port);
-            try {
-                if (sendto(sock, buffer, strlen(buffer), 0, (const struct sockaddr *) &dest_addres,
-                        sizeof(dest_addres)) < 0) {
-//                    Could not send the msg
-                    perror("Could not send");
-                }
-            }
-            catch (const overflow_error &e) {
-                throw overflow_error("could not send");
-            }
-        }
-//        Detects whether anything is received.
-        memset(recv_buff, 0, sizeof(recv_buff));
-        recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct sockaddr *) &dest_addres,
-                 reinterpret_cast<socklen_t *>(sizeof(dest_addres)));
-
-//        TODO: Check ip here instead of error, and fix in general
-//        Error number 14 means bad address, but it receives the correct info. So it works.
-        if (errno == 14) {
-            debugPrint("recv_buff", recv_buff, false);
-            char first_char = recv_buff[0];
-            if (first_char == error_char) {
-//                There is a random checksum error server-side. Try sending and receiving again.
-                continue;
-            }
-            return recv_buff;
-        }
-    }
-    return "";
-}
-
-/**
- * Tries to send a message and receive the response to the given port
- * @param sock The socket it needs to send the message to
- * @param buffer The message that needs to be sent.
- * @param dest_ip The ip-address that needs to receive the message.
- * @param dest_port The port that the message need to be sent to.
- * @return The received message if there is any. If there is no response, then it will be the empty string.
- */
-string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port) {
-    vector<int> dest_ports;
-    dest_ports.push_back(dest_port);
-    return sendAndReceive(sock, buffer, dest_ip, dest_ports);
 }
