@@ -2,7 +2,7 @@ struct sockaddr_in sock_opts(int sock, const std::string& dest_ip, int timeout_m
 
 int socket_creation();
 
-int char_pointer_to_int(char *argument);
+int char_pointer_to_int(std::basic_string<char> argument);
 
 void check_ip(const char *argument);
 

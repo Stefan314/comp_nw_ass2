@@ -13,7 +13,7 @@ struct sockaddr_in sock_opts(int sock, const std::string&  dest_ip, int timeout_
 
 int socket_creation();
 
-int char_pointer_to_int(char *argument);
+int char_pointer_to_int(std::basic_string<char> argument);
 
 void check_ip(const char *argument);
 
@@ -53,7 +53,7 @@ int socket_creation() {
  * @throw An error if the given argument cannot be converted into a number.
  * I.e., it has characters that are not numbers.
  */
-int char_pointer_to_int(char *argument) {
+int char_pointer_to_int(std::basic_string<char> argument) {
     std::string arg(argument);
     try {
         std::size_t pos;
