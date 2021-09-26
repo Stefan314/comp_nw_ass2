@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <iostream>
+#include <utility>
 #include <vector>
 #include "scanner.h"
 #include <sys/socket.h>
@@ -21,12 +22,23 @@
 #include <algorithm>
 using namespace std;
 
+// TODO: Remove most of the hexadecimal things.
+//  We often convert from binary to hexadecimal for seemingly no reason in the end
+
 bool hardCodeHiddenPorts = true;
 // Used for testing TODO: Set all to false in final version.
 bool hardCodedPorts = true;
 bool testCustomHeader = false;
-//    The payload if the program needs to send the group number.
+// The payload if the program needs to send the group number.
 const char *groupNumber = "$group_47$";
+
+/**
+ * Clion got upset when I declared this as a global variable, so it's made into a function.
+ * @return All the hexadecimal characters in order.
+ */
+string getHexChars() {
+    return "0123456789abcdef";
+}
 
 void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const string& dest_ip);
 
@@ -40,7 +52,7 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& 
 
 string invBin(string bin);
 
-string hexToBin(const string& hexadec);
+string hexToBin(const string& hexadecimal_string);
 
 string decrementBin(string bin, int decrement);
 
@@ -48,13 +60,13 @@ string incrementHex(string hex, int increment);
 
 string binToHex(const string& bin);
 
-string decrementHex(string hex, int decrement);
+string decrementHex(string hex, unsigned int decrement);
 
-string hexAddition(string hex1, string hex2);
+string hexAddition(string hex1, const string& hex2);
 
-string hextetSum(string hex);
+string hextetSum(const string& hex);
 
-string invHex(const string& hext);
+string invHex(const string& hex);
 
 string ipToBin(const string& ip);
 
@@ -64,19 +76,19 @@ string createCorrectId(const string& desired_checksum, const string& calc_checks
 
 char binToChar(const string& bin);
 
-string binToChars(const string& bin);
+string binToCharString(const string& bin);
 
 string checksumPortHandler(int sock, const string &dest_ip, const int &port);
 
-string evilBitHandler(int sock, const string &destIP, const int &port);
+string evilPortHandler(int sock, const string &destIP, const int &port);
 
 string checksumPortHandler2(int sock, string response, const string& dest_ip, int port);
 
 string checksumPortHandler3(int sock, const string &dest_ip, int port, const string& new_UDP_checksum, const string& new_src_ip);
 
-string oraclePortHandler(int sock, vector<string> secret_ports, const string& dest_ip, int port);
+string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port, const string& secret_msg);
 
-string oraclePortHandler2(int sock, const string &dest_ip, string response);
+string oraclePortHandler2(int sock, const string &dest_ip, string previous_response, const string& secret_msg);
 
 void runPuzzle(int argc, char *argv[]);
 
@@ -84,6 +96,8 @@ void runPuzzle(int argc, char *argv[]);
 //int main(int argc, char *argv[]) {
 //    runPuzzle(argc, argv);
 //}
+
+string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox);
 
 void runPuzzle(int argc, char *argv[]) {
 //    Default ip-address, in case the user did not enter any parameters.
@@ -150,15 +164,15 @@ void runPuzzle(int argc, char *argv[]) {
 /**
  * Converts a hexadecimal to a binary number.
  * Partially inspired by user https://stackoverflow.com/users/1951468/silex on thread
- * https://stackoverflow.com/questions/18310952/convert-strings-between-hexadec-format-and-binary-format
- * @param hexadec The string representation of a hexadecimal number.
+ * https://stackoverflow.com/questions/18310952/convert-strings-between-hexadecimal_string-format-and-binary-format
+ * @param hexadecimal_string The string representation of a hexadecimal number.
  * @return The hexadecimal number, converted to binary.
  */
-string hexToBin(const string& hexadec) {
+string hexToBin(const string& hexadecimal_string) {
     string bin;
-    for (auto&& hexa : hexadec) {
+    for (auto&& hexadecimal : hexadecimal_string) {
         stringstream stream;
-        stream << hex << hexa;
+        stream << hex << hexadecimal;
         unsigned result;
         stream >> result;
 //        4, because hexadecimal is base 16, which is 2^4, so 4 bits
@@ -170,7 +184,7 @@ string hexToBin(const string& hexadec) {
 
 string decrementBin(string bin, int decrement) {
     for (int i = 0; i < decrement; i++) {
-        char last_bit = bin.at(bin.size() - 1);
+        char last_bit = bin[bin.size() - 1];
         string replacement = "0";
         switch (last_bit) {
             case '0':
@@ -211,239 +225,75 @@ string binToHex(const string& bin) {
     return hex_hext;
 }
 
-string decrementHex(string hex, int decrement) {
+string decrementHex(string hex, unsigned int decrement) {
     for (int i = 0; i < decrement; i++) {
-        char last_hex = hex.at(hex.size() - 1);
-        string replacement = "0";
-        switch (last_hex) {
-            case '0':
-                replacement = "f";
-                if (hex.size() > 1) {
-                    hex = decrementHex(hex.substr(0, strlen(hex.c_str()) - 1), 1).
-                            append(replacement);
-                }
-                break;
-            case '1':
-                replacement = "0";
-                break;
-            case '2':
-                replacement = "1";
-                break;
-            case '3':
-                replacement = "2";
-                break;
-            case '4':
-                replacement = "3";
-                break;
-            case '5':
-                replacement = "4";
-                break;
-            case '6':
-                replacement = "5";
-                break;
-            case '7':
-                replacement = "6";
-                break;
-            case '8':
-                replacement = "7";
-                break;
-            case '9':
-                replacement = "8";
-                break;
-            case 'A':
-            case 'a':
-                replacement = "9";
-                break;
-            case 'B':
-            case 'b':
-                replacement = "a";
-                break;
-            case 'C':
-            case 'c':
-                replacement = "b";
-                break;
-            case 'D':
-            case 'd':
-                replacement = "c";
-                break;
-            case 'E':
-            case 'e':
-                replacement = "d";
-                break;
-            case 'F':
-            case 'f':
-                replacement = "e";
-                break;
-            default:
-                break;
+        char last_el = (char) tolower(hex[hex.size() - 1]);
+        unsigned long idx_of_last = getHexChars().find(last_el);
+        string replacement;
+        if (idx_of_last != 0) {
+            replacement = getHexChars()[idx_of_last - 1];
         }
-        hex.replace(strlen(hex.c_str()) - 1, 1, replacement);
+        else {
+            replacement = getHexChars()[getHexChars().size() - 1];
+            if (hex == "0") {
+                return hex;
+            }
+            hex = decrementHex(hex.substr(0, hex.size() - 1), 1).append(replacement);
+        }
+        hex.replace(hex.size() - 1, 1, replacement);
     }
     return hex;
 }
 
 string incrementHex(string hex, int increment) {
+    debugPrint("inc", increment, false);
     for (int i = 0; i < increment; i++) {
-        char last_hex = hex.at(hex.size() - 1);
-        string replacement = "0";
-        switch (last_hex) {
-            case '0':
-                replacement = "1";
-                break;
-            case '1':
-                replacement = "2";
-                break;
-            case '2':
-                replacement = "3";
-                break;
-            case '3':
-                replacement = "4";
-                break;
-            case '4':
-                replacement = "5";
-                break;
-            case '5':
-                replacement = "6";
-                break;
-            case '6':
-                replacement = "7";
-                break;
-            case '7':
-                replacement = "8";
-                break;
-            case '8':
-                replacement = "9";
-                break;
-            case '9':
-                replacement = "a";
-                break;
-            case 'A':
-            case 'a':
-                replacement = "b";
-                break;
-            case 'B':
-            case 'b':
-                replacement = "c";
-                break;
-            case 'C':
-            case 'c':
-                replacement = "d";
-                break;
-            case 'D':
-            case 'd':
-                replacement = "e";
-                break;
-            case 'E':
-            case 'e':
-                replacement = "f";
-                break;
-            case 'F':
-            case 'f':
-                replacement = "0";
-                if (hex.size() == 1) {
-                    hex.insert(0, "0");
-                }
-                hex = incrementHex(hex.substr(0, strlen(hex.c_str()) - 1), 1).append(replacement);
-                break;
-            default:
-                break;
+        debugPrint("hex", hex, false);
+        char last_el = (char) tolower(hex[hex.size() - 1]);
+        unsigned long idx_of_last = getHexChars().find(last_el);
+        string replacement;
+        if (idx_of_last != getHexChars().size() - 1) {
+            replacement = getHexChars()[idx_of_last + 1];
         }
-        hex.replace(strlen(hex.c_str()) - 1, 1, replacement);
+        else {
+            replacement = getHexChars()[0];
+            if (hex.size() == 1) {
+                hex = hex.insert(0, replacement);
+            }
+            hex = incrementHex(hex.substr(0, hex.size() - 1), 1).append(replacement);
+        }
+        hex.replace(hex.size() - 1, 1, replacement);
     }
     return hex;
 }
 
-string hexAddition(string hex1, string hex2) {
-    bool hex2_is_zeroes = (hex2.find('0') == std::string::npos);
-    while (!hex2_is_zeroes) {
-        hex1 = incrementHex(hex1, 1);
-        hex2 = decrementHex(hex2, 1);
-        hex2_is_zeroes = (hex2.find('0') == std::string::npos);
-    }
-    return hex1;
+string hexAddition(string hex1, const string& hex2) {
+    int hex2_as_int = stoi(hex2, nullptr, 16);
+    debugPrint("hex2 as int", hex2_as_int, false);
+    return incrementHex(std::move(hex1), hex2_as_int);
 }
 
-string hextetSum(string hex) {
+string hextetSum(const string& hex) {
     string hextet_sum = "0000";
-
-    while (!hex.empty()) {
-        debugPrint("hex", hex, false);
-
-        string hextet = hex.substr(0, 4);
+    int step_size = 4;
+    for (int i = 0; i < hex.size(); i += step_size) {
+        string hextet = hex.substr(i, step_size);
         debugPrint("hextet", hextet, false);
-
-        hex = hex.substr(4, hex.size() - 4);
         hextet_sum = hexAddition(hextet_sum, hextet);
         debugPrint("hextet_sum", hextet_sum, false);
     }
     return hextet_sum;
 }
 
-string invHex(const string& hext) {
-    string inv_hext;
+string invHex(const string& hex) {
+    string hex_inv;
 
-    for (auto &&hex : hext) {
-        switch(hex) {
-            case '0':
-                inv_hext += "f";
-                break;
-            case '1':
-                inv_hext += "e";
-                break;
-            case '2':
-                inv_hext += "d";
-                break;
-            case '3':
-                inv_hext += "c";
-                break;
-            case '4':
-                inv_hext += "b";
-                break;
-            case '5':
-                inv_hext += "a";
-                break;
-            case '6':
-                inv_hext += "9";
-                break;
-            case '7':
-                inv_hext += "8";
-                break;
-            case '8':
-                inv_hext += "7";
-                break;
-            case '9':
-                inv_hext += "6";
-                break;
-            case 'A':
-            case 'a':
-                inv_hext += "5";
-                break;
-            case 'B':
-            case 'b':
-                inv_hext += "4";
-                break;
-            case 'C':
-            case 'c':
-                inv_hext += "3";
-                break;
-            case 'D':
-            case 'd':
-                inv_hext += "2";
-                break;
-            case 'E':
-            case 'e':
-                inv_hext += "1";
-                break;
-            case 'F':
-            case 'f':
-                inv_hext += "0";
-                break;
-            default:
-                break;
-        }
+    for (auto &&el : hex) {
+        unsigned int idx_of_el = getHexChars().find(el);
+        hex_inv += getHexChars()[getHexChars().size() - 1- idx_of_el];
     }
-    debugPrint("inv_hext", inv_hext, false);
-    return inv_hext;
+    debugPrint("hex_inv", hex_inv, false);
+    return hex_inv;
 }
 
 string ipToBin(const string& ip) {
@@ -460,18 +310,18 @@ string ipToBin(const string& ip) {
 }
 
 uint16_t ipChecksum(struct iphdr ip_hdr) {
-    string vers = bitset<4>(ip_hdr.version).to_string();
+    string version = bitset<4>(ip_hdr.version).to_string();
     string ihl = bitset<4>(ip_hdr.ihl).to_string();
     string tos = bitset<8>(ip_hdr.tos).to_string();
-    uint32_t vers_ihl_dscp_ecn_hext = stoi(vers + ihl + tos, nullptr, 2);
+    uint32_t version_IHL_DSCP_ECN_hextet = stoi(version + ihl + tos, nullptr, 2);
 
     uint32_t tot_len = ip_hdr.tot_len;
     uint32_t id = ip_hdr.id;
     uint32_t flag_frag_hext = ip_hdr.frag_off;
 
     string ttl = bitset<16>(ip_hdr.ttl).to_string();
-    string prot = bitset<16>(ip_hdr.protocol).to_string();
-    uint32_t ttl_prot_hext = stoi(ttl + prot, nullptr, 2);
+    string protocol = bitset<16>(ip_hdr.protocol).to_string();
+    uint32_t ttl_protocol_hextet = stoi(ttl + protocol, nullptr, 2);
 
     string src_ip = bitset<32>(ip_hdr.saddr).to_string();
     uint32_t src_ip_hext1 = stoi(src_ip.substr(0, 16), nullptr, 2);
@@ -481,7 +331,7 @@ uint16_t ipChecksum(struct iphdr ip_hdr) {
     uint32_t dest_ip_hext1 = stoi(dest_ip.substr(0, 16), nullptr, 2);
     uint32_t dest_ip_hext2 = stoi(dest_ip.substr(16, 16), nullptr, 2);
 
-    uint32_t hext_sum = vers_ihl_dscp_ecn_hext + tot_len + id + flag_frag_hext + ttl_prot_hext +
+    uint32_t hext_sum = version_IHL_DSCP_ECN_hextet + tot_len + id + flag_frag_hext + ttl_protocol_hextet +
                         src_ip_hext1 + src_ip_hext2 + dest_ip_hext1 + dest_ip_hext2;
     debugPrint("h_sum", hext_sum, false);
 
@@ -510,7 +360,7 @@ char binToChar(const string& bin) {
     return (char) stoi(bin, nullptr, 2);
 }
 
-string binToChars(const string& bin) {
+string binToCharString(const string& bin) {
     string chars;
     int step_size = 8;
     for (int i = 0; i < bin.size(); i += step_size) {
@@ -542,8 +392,8 @@ struct iphdr createIPHeader(const string& src_ip, const string& dest_ip, unsigne
 //    Time To Live = 250, so we can have a decent TTL
     uint8_t ttl = htons(250);
 //    Protocol = 17, because UDP
-    uint8_t prot = htons(17);
-//    Header checksum = 0, so it won't be checked B)
+    uint8_t protocol = htons(17);
+//    Header checksum = 0, so it won't be checked :)
     uint16_t ip_checksum = htons(0);
 //    For th ip-addresses, stoll is used, because they can't fit in a positive integer.
 //    Since that uses 31 bits for the default 32 bit env.
@@ -565,7 +415,7 @@ struct iphdr createIPHeader(const string& src_ip, const string& dest_ip, unsigne
     ip_hdr.id = id;
     ip_hdr.frag_off = flag_frag;
     ip_hdr.ttl = ttl;
-    ip_hdr.protocol = prot;
+    ip_hdr.protocol = protocol;
     ip_hdr.check = ip_checksum;
     ip_hdr.saddr = src_ip_int;
     ip_hdr.daddr = dest_ip_int;
@@ -618,6 +468,8 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& 
 
     header_sum = removeShortOverflow(header_sum);
 
+    debugPrint("Hex hdr sum no of", header_sum, false);
+
     int max_size = 16;
     int max_short = (int) pow(2, max_size) - 1;
     if (header_sum > inv_check_sum) {
@@ -636,11 +488,11 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& 
  * @return A hextet in integer format.
  */
 uint16_t removeShortOverflow(uint32_t header_sum) {
-//    By splitting it into two parts.
-//    Such that the right part is a hextet, the remaining part is padded to also form a hextet.each 16, long. The left part is padded.
-//    If the new header sum is still longer than 16, repeat.
     int max_size = 4;
-    string hs_hex = binToHex(bitset<32>(header_sum).to_string());
+    debugPrint("hs int", header_sum, false);
+    string hs_bin = bitset<32>(header_sum).to_string();
+    debugPrint("hs bin", hs_bin, false);
+    string hs_hex = binToHex(hs_bin);
     debugPrint("hs hex", hs_hex, false);
 
 //    Loop until no more overflow exists.
@@ -651,6 +503,8 @@ uint16_t removeShortOverflow(uint32_t header_sum) {
         for (int i = 0; i < 2 * max_size - hs_hex.size(); i++) {
             padding += "0";
         }
+        debugPrint("padding", padding, false);
+        debugPrint("hs hex", hs_hex, false);
         hs_hex = hextetSum(padding.append(hs_hex));
     }
     debugPrint("Hs hex, no overflow", hs_hex, false);
@@ -701,7 +555,7 @@ struct udphdr createUDPHeader(int dest_port, const string& checksum, const strin
     uint16_t src = htons(0);
 //    Destination port
     uint16_t dest = htons(dest_port);
-//    Length = 8, because UDP's header is 8
+//    Length = 8, because the UDP-header is 8 bytes long
     uint16_t len = htons(8);
 //    Checksum
     debugPrint("check, pre-stoi", checksum, false);
@@ -725,10 +579,17 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
 /* This is the port we need to send the comma seperated list of secret ports to.
  * Set to -1, to detect that this port wasn't picked up. */
     int oracle_port = -1;
+
+//    The hidden ports will be stored in here.
     vector<string> secret_ports;
+//    The secret message
+    string secret_msg;
+
 // This is used for when this program cannot solve the puzzle yet.
     if (hardCodeHiddenPorts) {
         secret_ports.emplace_back("4014");
+        secret_msg = "Hey you, you’re finally awake. You were trying to cross the border right? "
+                     "Walked right into that Imperial ambush same as us and that thief over there.";
     }
 
 /* These are some key-characters for determining what message was sent to find what to respond.
@@ -789,7 +650,7 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
         }
         else if (response_start == key_char3) {
 //            This is the evil port.
-            response = evilBitHandler(sock, dest_ip, open_port);
+            response = evilPortHandler(sock, dest_ip, open_port);
         }
         else if (response_start == key_char4) {
 //            This is the parsing port.
@@ -797,10 +658,10 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
             secret_ports.push_back(secret_port);
         }
     }
-    string response = oraclePortHandler(sock, secret_ports, dest_ip, oracle_port);
+    string response = oraclePortHandler(sock, secret_ports, dest_ip, oracle_port, secret_msg);
 }
 
-string oraclePortHandler(int sock, vector<string> secret_ports, const string& dest_ip, int port) {
+string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port, const string& secret_msg) {
 //    Sending the correct message to the oracle port.
     string secret_ports_csl;
     for (int i = 0; i < secret_ports.size(); i++) {
@@ -812,22 +673,38 @@ string oraclePortHandler(int sock, vector<string> secret_ports, const string& de
     char buff_special_msg[1400];
     strcpy(buff_special_msg, secret_ports_csl.c_str());
     string response = sendAndReceive(sock, buff_special_msg, dest_ip, port);
-    return oraclePortHandler2(sock, dest_ip, response);
+    return oraclePortHandler2(sock, dest_ip, response, secret_msg);
 }
 
-string oraclePortHandler2(int sock, const string &dest_ip, string response) {
-/* This character corresponds successfully sending the comma seperated list, correctly formatted, to the oracle port.
+string oraclePortHandler2(int sock, const string &dest_ip, string previous_response, const string& secret_msg) {
+/* This character corresponds to successfully sending the comma seperated list, correctly formatted, to the oracle port.
  * To summarise what has been stated previously for what the next step is.
  * The port will send the program a different comma seperated list.
- * The program needs to knock on these ports in the correct order to get the secret message. */
+ * The program needs to knock on these ports in the correct order to get the secret message.
+ * When it has done so, the final port will respond with "You have knocked. You may enter". */
     char key_char1_2 = '4';
 
-    if (response[0] == key_char1_2) {
-        vector<int> port_knox = stringVecToIntVec(split(response, ","));
+    if (previous_response[0] == key_char1_2) {
+        vector<int> port_knox = stringVecToIntVec(split(previous_response, ","));
         char buff[1400];
-        strcpy(buff, "Hey Port");
-//        TODO: Fix, does not detect response correctly.
-        return sendAndReceive(sock, buff, dest_ip, port_knox);
+        strcpy(buff, secret_msg.c_str());
+        vector<string> responses = sendAndReceive(sock, buff, dest_ip, port_knox);
+        cout << "The server responded:" << endl;
+        for (auto&& response : responses) {
+            cout << response << endl;
+        }
+        return oraclePortHandler3(sock, dest_ip, responses, port_knox);
+    }
+    return "";
+}
+
+string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox) {
+/* This character corresponds to successfully sending the port knocks in the correct order.
+ * When done so, the final hidden port will send the message starting with this character. */
+    char key_char1_3 = 'Y';
+
+    if (responses[responses.size() - 1][0] == key_char1_3) {
+
     }
     return "";
 }
@@ -874,8 +751,8 @@ string checksumPortHandler2(int sock, string response, const string& dest_ip, in
         i++;
         curr_char = response[i];
     }
-    debugPrint("new_UDP_checksum", new_UDP_checksum, false);
-    debugPrint("new_src_ip", new_src_ip, false);
+    debugPrint("new UDP checksum", new_UDP_checksum, false);
+    debugPrint("new src ip", new_src_ip, false);
 
     return checksumPortHandler3(sock, dest_ip, port, new_UDP_checksum, new_src_ip);
 }
@@ -924,7 +801,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
 //    Time To Live = 250, so we can have a decent TTL
     uint8_t ttl = htons(250);
 //    Protocol = 17, because we're using a UDP-header
-    uint8_t prot = htons(17);
+    uint8_t protocol = htons(17);
 //    Header checksum = 0, so it won't be checked
     uint16_t ip_checksum = htons(0);
 
@@ -950,7 +827,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
     ip_hdr->id = id;
     ip_hdr->frag_off = flag_frag;
     ip_hdr->ttl = ttl;
-    ip_hdr->protocol = prot;
+    ip_hdr->protocol = protocol;
     ip_hdr->check = ip_checksum;
     ip_hdr->saddr = src_ip_int;
     ip_hdr->daddr = dest_ip_int;
@@ -994,7 +871,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
     debugPrint("iphdr id", ip_hdr->id, false);
     debugPrint("iphdr fo", ip_hdr->frag_off, false);
     debugPrint("iphdr ttl", ip_hdr->ttl, false);
-    debugPrint("iphdr prot", ip_hdr->protocol, false);
+    debugPrint("iphdr protocol", ip_hdr->protocol, false);
     debugPrint("iphdr check", ip_hdr->check, false);
     debugPrint("iphdr sad", ip_hdr->saddr, false);
     debugPrint("iphdr dad", ip_hdr->daddr, false);
@@ -1006,7 +883,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
     debugPrint("udphdr check", udp_hdr->check, false);
 
 //    TODO: Remove this commented out code in final version.
-//    strcpy(buff_special_msg, "$group_47$");
+    strcpy(buff_special_msg, "$group_47$");
 //    memcpy(buff_special_msg, &ip_hdr, sizeof(*ip_hdr));
 //    Make the udp header appear after the ip header in the buffer
 //    memcpy(buff_special_msg + sizeof(*ip_hdr), &udp_hdr, sizeof(*udp_hdr));
@@ -1015,7 +892,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
     return sendAndReceive(sock, buff_special_msg, dest_ip, port);
 }
 
-string evilBitHandler(int sock, const string &destIP, const int &port) {
+string evilPortHandler(int sock, const string &destIP, const int &port) {
 //    TODO: Send group number with evil bit set to 1.
     const char* special_msg = "";
     char buff_special_msg[1400];

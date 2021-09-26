@@ -10,11 +10,11 @@
 #include <ctime>
 using namespace std;
 
-int noOfRetries = 20;
+int noOfRetries = 10;
 // In milliseconds
 int timeout = 400;
-// Used for testing TODO: Set all to false in final version.
-bool debug = false;
+// Used for testing TODO: Set to true in final version.
+bool debugOverride = false;
 
 struct sockaddr_in sockOpts(int sock, const string &dest_ip);
 
@@ -24,13 +24,13 @@ bool checkIp(const string& argument);
 
 vector<int> findOpenPorts(const string &dest_ip, int from, int to, int sock, int max_ports);
 
-string sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports);
+vector<string> sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports);
 
 string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port);
 
-void debugPrint(const string &arg_name, const string &arg, bool debug_override);
+void debugPrint(const string &arg_name, const string &arg, bool debug);
 
-void debugPrint(const string &arg_name, unsigned long arg, bool debug_override);
+void debugPrint(const string &arg_name, unsigned long arg, bool debug);
 
 vector<string> split(const string& str_to_split, const string& delim);
 
@@ -103,7 +103,7 @@ void runScanner(int argc, char *argv[]) {
     if (sock == -1) {
         perror("socket was not created.");
     }
-    struct sockaddr_in dest_address = sockOpts(sock, dest_ip);
+    sockOpts(sock, dest_ip);
 
     printf("The open parts are: ");
     for (auto el : findOpenPorts(dest_ip, from, to, sock, 4)) {
@@ -164,7 +164,7 @@ vector<int> findOpenPorts(const string &dest_ip, int from, int to, int sock, int
         if (!response.empty()) {
             open_ports.push_back(port_no);
         }
-        if (open_ports.size() == 4) {
+        if (open_ports.size() == max_ports) {
             break;
         }
     }
@@ -179,49 +179,63 @@ vector<int> findOpenPorts(const string &dest_ip, int from, int to, int sock, int
  * @param dest_ports The ports that the message need to be sent to.
  * @return The received message if there is any. If there is no response, then it will return the empty string.
  */
-string sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports) {
+vector<string> sendAndReceive(int sock, char *buffer, const string &dest_ip, const vector<int>& dest_ports) {
+//    Stores all the responses inside this vector.
+    vector<string> responses;
 /* This character represents the first character of the message saying that there was a checksum error server-side.
  * The program will retry that port. */
     char error_char = 'R';
-    struct sockaddr_in dest_addres{};
-    dest_addres.sin_family = AF_INET;
-    inet_aton(dest_ip.c_str(), &dest_addres.sin_addr);
-    char recv_buff[1400];
+    struct sockaddr_in dest_address{};
+    dest_address.sin_family = AF_INET;
+    inet_aton(dest_ip.c_str(), &dest_address.sin_addr);
+    char receive_buff[1400];
 /* Amount of times you want to try and send the message and try to receive one as well.
  * If it didn't receive anything, we conclude that the port is not open. */
     for (int i = 0; i < noOfRetries; i++)  {
 //        Sends the ports in the given order
         for (auto&& dest_port : dest_ports) {
-            dest_addres.sin_port = htons(dest_port);
+            dest_address.sin_port = htons(dest_port);
             try {
-                if (sendto(sock, buffer, strlen(buffer), 0, (const struct sockaddr *) &dest_addres,
-                           sizeof(dest_addres)) < 0) {
+                if (sendto(sock, buffer, strlen(buffer), 0, (const struct sockaddr *) &dest_address,
+                           sizeof(dest_address)) < 0) {
 //                    Could not send the msg
                     perror("Could not send");
+                }
+                else {
+//                    Detects whether anything is received.
+                    memset(receive_buff, 0, sizeof(receive_buff));
+                    struct sockaddr_in receive_address{};
+                    socklen_t address_len = sizeof(receive_address);
+                    ssize_t output_len = recvfrom(sock, receive_buff, sizeof(receive_buff), 0,
+                                                  (struct sockaddr*)&receive_address, &address_len);
+                    string sender_ip = inet_ntoa(receive_address.sin_addr);
+                    unsigned int sender_port = ntohs(receive_address.sin_port);
+                    debugPrint("sender ip", inet_ntoa(receive_address.sin_addr), false);
+                    debugPrint("sender port", ntohs(receive_address.sin_port), false);
+
+//                    Ensures that we get the message from the correct ip and port
+                    if (output_len > 0 and sender_ip == dest_ip and sender_port == dest_port) {
+                        debugPrint("receive_buff", receive_buff, false);
+                        char first_char = receive_buff[0];
+                        if (first_char == error_char) {
+//                            There is a random checksum error server-side. Try sending and receiving again.
+                            break;
+                        }
+                        responses.emplace_back(receive_buff);
+                    }
                 }
             }
             catch (const overflow_error &e) {
                 throw overflow_error("could not send");
             }
         }
-//        Detects whether anything is received.
-        memset(recv_buff, 0, sizeof(recv_buff));
-        recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct sockaddr *) &dest_addres,
-                 reinterpret_cast<socklen_t *>(sizeof(dest_addres)));
-
-//        TODO: Check ip here instead of error, and fix in general
-//        Error number 14 means bad address, but it receives the correct info. So it works.
-        if (errno == 14) {
-            debugPrint("recv_buff", recv_buff, false);
-            char first_char = recv_buff[0];
-            if (first_char == error_char) {
-//                There is a random checksum error server-side. Try sending and receiving again.
-                continue;
-            }
-            return recv_buff;
+        if (responses.size() == dest_ports.size()) {
+            return responses;
+        } else {
+            responses.clear();
         }
     }
-    return "";
+    return responses;
 }
 
 /**
@@ -235,17 +249,17 @@ string sendAndReceive(int sock, char *buffer, const string &dest_ip, const vecto
 string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port) {
     vector<int> dest_ports;
     dest_ports.push_back(dest_port);
-    return sendAndReceive(sock, buffer, dest_ip, dest_ports);
+    return sendAndReceive(sock, buffer, dest_ip, dest_ports)[0];
 }
 
-void debugPrint(const string &arg_name, const string &arg, bool debug_override) {
-    if (debug || debug_override) {
+void debugPrint(const string &arg_name, const string &arg, bool debug) {
+    if (!debugOverride && debug) {
         cout << arg_name + "=" << arg << "\n";
     }
 }
 
-void debugPrint(const string &arg_name, unsigned long arg, bool debug_override) {
-    debugPrint(arg_name, to_string(arg), debug_override);
+void debugPrint(const string &arg_name, unsigned long arg, bool debug) {
+    debugPrint(arg_name, to_string(arg), debug);
 }
 
 vector<string> split(const string& str_to_split, const string& delim) {
