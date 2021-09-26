@@ -84,9 +84,11 @@ string evilPortHandler(int sock, const string &destIP, const int &port);
 
 string checksumPortHandler2(int sock, string response, const string& dest_ip, int port);
 
-string checksumPortHandler3(int sock, const string &dest_ip, int port, const string& new_UDP_checksum, const string& new_src_ip);
+string checksumPortHandler3(int sock, const string &dest_ip, int port, const string& new_UDP_checksum,
+                            const string& new_src_ip);
 
-string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port, const string& secret_msg);
+string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port,
+                         const string& secret_msg);
 
 string oraclePortHandler2(int sock, const string &dest_ip, string previous_response, const string& secret_msg);
 
@@ -488,27 +490,14 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& 
  * @return A hextet in integer format.
  */
 uint16_t removeShortOverflow(uint32_t header_sum) {
-    int max_size = 4;
+    auto max_size = (unsigned int) pow(2, 16);
     debugPrint("hs int", header_sum, false);
-    string hs_bin = bitset<32>(header_sum).to_string();
-    debugPrint("hs bin", hs_bin, false);
-    string hs_hex = binToHex(hs_bin);
-    debugPrint("hs hex", hs_hex, false);
-
-//    Loop until no more overflow exists.
-    while (hs_hex.size() > max_size) {
-/* Splits the header sum into two parts, such that the right part is a hextet.
- * The remaining part on the left is padded, such that it also forms a hextet. */
-        string padding;
-        for (int i = 0; i < 2 * max_size - hs_hex.size(); i++) {
-            padding += "0";
-        }
-        debugPrint("padding", padding, false);
-        debugPrint("hs hex", hs_hex, false);
-        hs_hex = hextetSum(padding.append(hs_hex));
+    while (header_sum >= max_size) {
+        unsigned int overflow = header_sum / max_size;
+        unsigned int remainder = header_sum % max_size;
+        header_sum = remainder + overflow;
     }
-    debugPrint("Hs hex, no overflow", hs_hex, false);
-    header_sum = stoi(hs_hex, nullptr, 16);
+    debugPrint("Hs, no overflow", header_sum, false);
     return header_sum;
 }
 
@@ -661,7 +650,8 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
     string response = oraclePortHandler(sock, secret_ports, dest_ip, oracle_port, secret_msg);
 }
 
-string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port, const string& secret_msg) {
+string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port,
+                         const string& secret_msg) {
 //    Sending the correct message to the oracle port.
     string secret_ports_csl;
     for (int i = 0; i < secret_ports.size(); i++) {
@@ -717,8 +707,6 @@ string checksumPortHandler(int sock, const string &dest_ip, const int &port) {
 
     if (!hardCodeHiddenPorts) {
         response = checksumPortHandler2(sock, response, dest_ip, port);
-//        TODO: Change this to do something with the response.
-//        secret_ports.push_back(response);
     }
     return parsed_string;
 }
@@ -889,7 +877,10 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
 //    memcpy(buff_special_msg + sizeof(*ip_hdr), &udp_hdr, sizeof(*udp_hdr));
     debugPrint("buffer", buff_special_msg, false);
 
-    return sendAndReceive(sock, buff_special_msg, dest_ip, port);
+    string response = sendAndReceive(sock, buff_special_msg, dest_ip, port);
+//    TODO: Change this to do something with the response.
+//    secret_ports.push_back(response);
+    return response;
 }
 
 string evilPortHandler(int sock, const string &destIP, const int &port) {
@@ -899,8 +890,8 @@ string evilPortHandler(int sock, const string &destIP, const int &port) {
     strcpy(buff_special_msg, special_msg);
     string response = sendAndReceive(sock, buff_special_msg, destIP, port);
     if (!hardCodeHiddenPorts) {
-//      TODO: Change this to do something with the response.
-//      secret_ports.push_back(response);
+//        TODO: Change this to do something with the response.
+//        secret_ports.push_back(response);
     }
     return "";
 }
