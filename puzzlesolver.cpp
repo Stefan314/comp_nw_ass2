@@ -93,7 +93,8 @@ string oraclePortHandler2(int sock, const string &dest_ip, string previous_respo
 
 void runPuzzle(int argc, char *argv[]);
 
-string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox);
+string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int> &port_knox,
+                          const string& secret_msg);
 
 // TODO: UNCOMMENT FOR THE FINAL VERSION
 ///**
@@ -900,7 +901,7 @@ string checksumPortHandler2(int sock, string response, const string& dest_ip, in
 }
 
 /**
- * Creates valid IPV4- and UDP-headers to send as a payload.
+ * Creates valid IPV4- and UDP-headers and sends them as a payload.
  * @param sock The socket used for sending.
  * @param dest_ip The IP-address of the destination.
  * @param port The port to send it to, the checksum port.
@@ -947,7 +948,7 @@ string checksumPortHandler3(int sock, const string &dest_ip, int port, const str
 //    Fragment offset = 0, since data is at regular position
     string frag_off = bitset<13>(0).to_string();
 //    Flags and fragment offset are merged for iphdr struct.
-    uint16_t flag_frag = htons(stoi(flag_str + frag_off,nullptr, 2));
+    uint16_t flag_frag = htons(stoi(flag_str + frag_off, nullptr, 2));
 
 //    Time To Live = 250, so we can have a decent TTL
     uint8_t ttl = htons(250);
@@ -1105,6 +1106,7 @@ string oraclePortHandler2(int sock, const string &dest_ip, string previous_respo
 
     if (previous_response[0] == key_char1_2) {
 //        Conversion from the received comma separated list to a vector of ports.
+        debugPrint("prev response", previous_response, false);
         vector<int> port_knox = stringVecToIntVec(split(previous_response, ","));
         char buff[1400];
         strcpy(buff, secret_msg.c_str());
@@ -1115,7 +1117,7 @@ string oraclePortHandler2(int sock, const string &dest_ip, string previous_respo
         for (auto&& response : responses) {
             cout << response << endl;
         }
-        return oraclePortHandler3(sock, dest_ip, responses, port_knox);
+        return oraclePortHandler3(sock, dest_ip, responses, port_knox, secret_msg);
     }
     return "";
 }
@@ -1130,12 +1132,18 @@ string oraclePortHandler2(int sock, const string &dest_ip, string previous_respo
  * @return TODO: Figure out what to return here.
  * If the program did not send the previous message correctly, then it will return the empty string.
  */
-string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox) {
+string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int> &port_knox,
+                          const string& secret_msg) {
 /* This character corresponds to successfully sending the port knocks in the correct order.
- * When done so, the final hidden port will send the message starting with this character. */
+ * When done so, the final hidden port will send the message starting with this character.
+ * Namely, this message is: "You have knocked. You may enter"*/
     char key_char1_3 = 'Y';
 
+    int final_hidden_port = port_knox[port_knox.size() - 1];
     if (responses[responses.size() - 1][0] == key_char1_3) {
+        char buff[1400];
+        strcpy(buff, secret_msg.c_str());
+        sendAndReceive(sock, buff, dest_ip, final_hidden_port);
 //        TODO: implement this
     }
     return "";
