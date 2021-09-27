@@ -577,6 +577,10 @@ string invBin(string bin) {
  */
 uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& dest_ip) {
     uint16_t correct_UDP_src_port;
+
+//    Creation of the pseudo header fields.
+
+//    IP-addresses split up into two hextets each, since they both use 32 bits.
     string src_ip_bin = ipToBin(src_ip);
     debugPrint("sip bin", src_ip_bin, false);
     uint32_t src_ip_1 = stoi(src_ip_bin.substr(0, 16), nullptr, 2);
@@ -590,28 +594,28 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& 
 //    Just a copy of the length in the udp header
     uint32_t udp_len = udp_hdr->len;
 
-//    Now follows the process of reverse engineering the given checksum,
-//    so we can edit the length-field in the UDP header to get ensure that the checksum is valid.
-    debugPrint("check", udp_hdr->check, false);
-    string check_bin = bitset<16>(udp_hdr->check).to_string();
-    debugPrint("check bin", check_bin, false);
-    string inv_check_bin = invBin(check_bin);
-    debugPrint("i check bin", inv_check_bin, false);
-    uint32_t inv_check_sum = stoi(inv_check_bin, nullptr, 2);
+//    Maximum amount of bits in the new source port.
+    int max_size = 16;
+//    The maximum number a 2 byte unsigned integer can reach.
+    auto max_short = (unsigned int) pow(2, max_size) - 1;
 
+/* Now follows the process of reverse engineering the given checksum,
+ * so we can edit the length-field in the UDP header to get ensure that the checksum is valid. */
+    debugPrint("check", udp_hdr->check, false);
+    unsigned int inv_check_sum = max_short - udp_hdr->check;
     debugPrint("Inv check sum", inv_check_sum, false);
 
+//    Adding all the header fields.
     uint32_t header_sum = src_ip_1 + src_ip_2 + dest_ip_1 + dest_ip_2 + protocol + udp_len + udp_hdr->len +
             udp_hdr->dest;
-
     debugPrint("Hex hdr sum", header_sum, false);
 
+//    The sum of the header fields, possibly has overflow. Make sure that it doesn't
     header_sum = removeShortOverflow(header_sum);
-
     debugPrint("Hex hdr sum no of", header_sum, false);
 
-    int max_size = 16;
-    int max_short = (int) pow(2, max_size) - 1;
+/* Ensures that the inverse check sum is larger than the header checksum.
+ * Since that difference is the new source port. */
     if (header_sum > inv_check_sum) {
         inv_check_sum += max_short;
     }
@@ -624,13 +628,14 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& 
 
 /**
  * Deals with overflow when the given integer exceeds 16 bits (cannot be converted into a hextet).
- * @param header_sum An integer that might not be overflowing when converted into a hextet.
+ * @param header_sum An integer that might need more than 16 bits. I.e., it cannot be stored into a hextet.
  * @return A hextet in integer format.
  */
 uint16_t removeShortOverflow(uint32_t header_sum) {
     auto max_size = (unsigned int) pow(2, 16);
     debugPrint("hs int", header_sum, false);
     while (header_sum >= max_size) {
+//        Integer division
         unsigned int overflow = header_sum / max_size;
         unsigned int remainder = header_sum % max_size;
         header_sum = remainder + overflow;
@@ -640,18 +645,24 @@ uint16_t removeShortOverflow(uint32_t header_sum) {
 }
 
 /**
- * Finds the difference between two binary strings.
- * @param bin1 must be larger than bin2.
- * @param bin2 must be smaller or equal to bin1.
- * @return The result of bin1 - bin2.
+ * Finds the absolute difference between two binary strings.
+ * @param bin1 A binary string
+ * @param bin2 A binary string
+ * @return The result of |bin1 - bin2|.
  */
 string binDiff(string bin1, const string& bin2) {
-    string diff = "0";
-    while (bin1 != bin2) {
-        bin1 = decrementBin(bin1, 1);
-        diff = incrementHex(diff, 1);
+/* Since this method only really works when one binary string is larger than or equal to the other.
+ * The program switches the strings around. */
+    if (!binLarger(bin2, bin1)) {
+        string diff = "0";
+        while (bin1 != bin2) {
+            bin1 = decrementBin(bin1, 1);
+            diff = incrementHex(diff, 1);
+        }
+        return hexToBin(diff);
+    } else {
+        return binDiff(bin2, bin1);
     }
-    return hexToBin(diff);
 }
 
 /**
@@ -660,13 +671,15 @@ string binDiff(string bin1, const string& bin2) {
  */
 bool binLarger(string bin1, string bin2) {
     for (int i = 0; i < bin1.size(); i++) {
-        char bit_hext1 = bin1[i];
-        char bit_hext2 = bin2[i];
-        if (bit_hext1 == bit_hext2) {
+        char bit_1 = bin1[i];
+        char bit_2 = bin2[i];
+        if (bit_1 == bit_2) {
             continue;
-        } else if (bit_hext1 == '0' && bit_hext2 == '1') {
+        } else if (bit_1 < bit_2) {
+//            bit_1 = 0 and bit_2 = 1
             return true;
         } else {
+//            bit_1 = 1 and bit_2 = 0
             return false;
         }
     }
@@ -674,11 +687,20 @@ bool binLarger(string bin1, string bin2) {
     return false;
 }
 
+/**
+ * Creates a valid UDP-header with a custom checksum by changing the source port. For more information:
+ * https://en.wikipedia.org/wiki/User_Datagram_Protocol
+ * @param dest_port The port that needs to receive the payload.
+ * @param checksum The custom checksum
+ * @param src_ip Used to create the IPV4 pseudo header for checksum calculation.
+ * @param dest_ip Used to create the IPV4 pseudo header for checksum calculation.
+ * @return A valid UDP-header, with a custom checksum and a changed source port.
+ */
 struct udphdr createUDPHeader(int dest_port, const string& checksum, const string& src_ip,
                             const string& dest_ip) {
     struct udphdr udp_hdr{};
 //    Creation of the header fields
-//    Source port = 0, will be changed later
+//    Source port = 0, will be changed later, is only here for a better overview
     uint16_t src = htons(0);
 //    Destination port
     uint16_t dest = htons(dest_port);
@@ -702,6 +724,13 @@ struct udphdr createUDPHeader(int dest_port, const string& checksum, const strin
     return udp_hdr;
 }
 
+/**
+ * Handles some incoming messages or lets other handlers handle them.
+ * @param open_ports The open ports of the given IP-address. These are the ports we need to send special messages to.
+ * @param sock The socket that the program will send packets over.
+ * @param buffer The buffer containing the message the program wants to send for now.
+ * @param dest_ip The location of the server that should receive the messages.
+ */
 void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const string& dest_ip) {
 /* This is the port we need to send the comma seperated list of secret ports to.
  * Set to -1, to detect that this port wasn't picked up. */
@@ -726,7 +755,7 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
  * If this is done correctly, another comma separated list is returned.
  * Which contain the ports that need to be knocked on in that order to get the secret message.
  * Knocking is just sending an arbitrary message, such as "Hey port!". */
-    char key_char1 = 'I';
+    const char keyChar1 = 'I';
 
 /* This character corresponds to the port that wants to receive the message of the form "$group_#$",
  * where # is the group number, in this case that is 47. This port will be called the 'checksum port'.
@@ -741,7 +770,7 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
  * Since the information always starts at the same indices.
  * Alternatively, one can extract the last 6 bytes to find this info.
  * Where the first 2 bytes, denote the checksum and the last 4 bytes represent the new source ip-address. */
-    char key_char2 = 'S';
+    const char keyChar2 = 'S';
 
 /* This character corresponds to the port that,
  * similarly to the message that the corresponding port of the previously mentioned character wanted to receive,
@@ -750,7 +779,7 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
  * However, the evil-bit needs to be set to 1 in the actual ip-header (so not sending the IPV4-header as a payload).
  * The evil-bit is one of the flags (the first) in the IPV4-header that is usually reserved to be 0.
  * To accomplish this, one must use a raw socket, so the headers can be changed. */
-    char key_char3 = 'T';
+    const char keyChar3 = 'T';
 
 /* This character corresponds to the port that we can do string parsing on to find one of the hidden ports,
  * that need to be in the comma separated list that the oracle wants to receive.
@@ -758,85 +787,56 @@ void messageHandler(const vector<int>& open_ports, int sock, char *buffer, const
  * This hidden port is always 4 digits long and has a period after it, which is the end of the message.
  * I.e., the hidden port can be found in msg.substring(len(msg) - 5, len(msg) - 1),
  * where the second parameter is the ending index, which is exclusive. */
-    char key_char4 = 'M';
+    const char keyChar4 = 'M';
 
     for (auto&& open_port : open_ports) {
-//        Used for testing msg where we put custom headers in the payload. Should not be runScanner during the final version.
+/* Used for testing msg where we put custom headers in the payload.
+ * Should not be run during the final version. */
         if (testCustomHeader and open_port != 4097) {
             continue;
         }
         string response = sendAndReceive(sock, buffer, dest_ip, open_port);
+
+//        Finds out what to do with the message and the port.
         char response_start = response[0];
-        if (response_start == key_char1) {
+        switch (response_start) {
+            case (keyChar1): {
 //            This is the oracle port.
-            oracle_port = open_port;
-        }
-        else if (response_start == key_char2) {
+                oracle_port = open_port;
+                break;
+            }
+            case (keyChar2): {
 //            This is the checksum port.
-            response = checksumPortHandler(sock, dest_ip, open_port);
-        }
-        else if (response_start == key_char3) {
+                response = checksumPortHandler(sock, dest_ip, open_port);
+                break;
+            }
+            case (keyChar3): {
 //            This is the evil port.
-            response = evilPortHandler(sock, dest_ip, open_port);
-        }
-        else if (response_start == key_char4) {
+                response = evilPortHandler(sock, dest_ip, open_port);
+                break;
+            }
+            case (keyChar4): {
 //            This is the parsing port.
-            string secret_port = response.substr(response.size() - 5, 4);
-            secret_ports.push_back(secret_port);
+                string secret_port = response.substr(response.size() - 5, 4);
+                secret_ports.push_back(secret_port);
+                break;
+            }
+            default: {
+//                This should not be possible.
+                break;
+            }
         }
     }
     string response = oraclePortHandler(sock, secret_ports, dest_ip, oracle_port, secret_msg);
 }
 
-string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port,
-                         const string& secret_msg) {
-//    Sending the correct message to the oracle port.
-    string secret_ports_csl;
-    for (int i = 0; i < secret_ports.size(); i++) {
-        secret_ports_csl += secret_ports[i];
-        if (i < secret_ports.size() - 1) {
-            secret_ports_csl += ", ";
-        }
-    }
-    char buff_special_msg[1400];
-    strcpy(buff_special_msg, secret_ports_csl.c_str());
-    string response = sendAndReceive(sock, buff_special_msg, dest_ip, port);
-    return oraclePortHandler2(sock, dest_ip, response, secret_msg);
-}
-
-string oraclePortHandler2(int sock, const string &dest_ip, string previous_response, const string& secret_msg) {
-/* This character corresponds to successfully sending the comma seperated list, correctly formatted, to the oracle port.
- * To summarise what has been stated previously for what the next step is.
- * The port will send the program a different comma seperated list.
- * The program needs to knock on these ports in the correct order to get the secret message.
- * When it has done so, the final port will respond with "You have knocked. You may enter". */
-    char key_char1_2 = '4';
-
-    if (previous_response[0] == key_char1_2) {
-        vector<int> port_knox = stringVecToIntVec(split(previous_response, ","));
-        char buff[1400];
-        strcpy(buff, secret_msg.c_str());
-        vector<string> responses = sendAndReceive(sock, buff, dest_ip, port_knox);
-        cout << "The server responded:" << endl;
-        for (auto&& response : responses) {
-            cout << response << endl;
-        }
-        return oraclePortHandler3(sock, dest_ip, responses, port_knox);
-    }
-    return "";
-}
-
-string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox) {
-/* This character corresponds to successfully sending the port knocks in the correct order.
- * When done so, the final hidden port will send the message starting with this character. */
-    char key_char1_3 = 'Y';
-
-    if (responses[responses.size() - 1][0] == key_char1_3) {
-
-    }
-    return "";
-}
-
+/**
+ * Sends the group number to the checksum port and forwards its response to checksumPortHandler2
+ * @param sock The socket it uses to send the data.
+ * @param dest_ip The IP-address of the destination.
+ * @param port The checksum port.
+ * @return TODO: Figure out what to return here.
+ */
 string checksumPortHandler(int sock, const string &dest_ip, const int &port) {
     string parsed_string;
     char buff_group_msg[1400];
@@ -849,26 +849,40 @@ string checksumPortHandler(int sock, const string &dest_ip, const int &port) {
     return parsed_string;
 }
 
+/**
+ * Uses the information gathered in checksumPortHandler and does some string parsing here.
+ * It passes this information to checksumPortHandler3.
+ * @param sock The socket it uses to send the data.
+ * @param dest_ip The IP-address of the destination.
+ * @param port The checksum port.
+ * @return TODO: Figure out what to return here.
+ * If the program did not send the previous message correctly, then it will return the empty string.
+ */
 string checksumPortHandler2(int sock, string response, const string& dest_ip, int port) {
 /* This character corresponds to successfully sending the group number, correctly formatted, to the checksum port.
  * To summarise what has been stated previously for what the next step is.
  * The program needs to send a changed IPV4- and UDP-header as a payload.
  * The previous response contains the information as to change which header fields and how. */
-    char key_char2_2 = 'H';
+    char keyChar2_2 = 'H';
 
+    string parsed_string;
+    if (response[0] != keyChar2_2) {
+        return parsed_string;
+    }
     string new_UDP_checksum;
     string new_src_ip;
 //    The previously mentioned values always start at the same index in the message.
-    int checksum_start_idx = 146;
-    int src_ip_start_idx = 186;
+    int checksumStartIdx = 146;
+    int srcIpStartIdx = 186;
 
-//    Gets the new UDP checksum and the new source ip for the next msg from this msg
-//    Since the checksum is in hexadecimal form, it is always of length 4.
+//    Gets the new UDP checksum and the new source ip for the next msg from the response
+
+//    Since the checksum is in hexadecimal form and is one hextet long, it is always of length 4.
     int checksum_size = 4;
-    for (int i = checksum_start_idx; i < checksum_start_idx + 4; i++) {
+    for (int i = checksumStartIdx; i < checksumStartIdx + 4; i++) {
         new_UDP_checksum += response[i];
     }
-    int i = src_ip_start_idx;
+    int i = srcIpStartIdx;
     char curr_char = response[i];
 //    The given IP-address consists of digits separated by periods.
 //    The distance between the periods can differ.
@@ -880,9 +894,20 @@ string checksumPortHandler2(int sock, string response, const string& dest_ip, in
     debugPrint("new UDP checksum", new_UDP_checksum, false);
     debugPrint("new src ip", new_src_ip, false);
 
-    return checksumPortHandler3(sock, dest_ip, port, new_UDP_checksum, new_src_ip);
+    response = checksumPortHandler3(sock, dest_ip, port, new_UDP_checksum, new_src_ip);
+
+    return parsed_string;
 }
 
+/**
+ * Creates valid IPV4- and UDP-headers to send as a payload.
+ * @param sock The socket used for sending.
+ * @param dest_ip The IP-address of the destination.
+ * @param port The port to send it to, the checksum port.
+ * @param new_UDP_checksum The checksum that should be as the UDP-header
+ * @param new_src_ip The changed source IP-address
+ * @return TODO: Figure out what to return here.
+ */
 string checksumPortHandler3(int sock, const string &dest_ip, int port, const string& new_UDP_checksum,
                             const string& new_src_ip) {
 //    Creation of the buffer
@@ -1030,6 +1055,88 @@ string evilPortHandler(int sock, const string &destIP, const int &port) {
     if (!hardCodeHiddenPorts) {
 //        TODO: Change this to do something with the response.
 //        secret_ports.push_back(response);
+    }
+    return "";
+}
+
+/**
+ * Sends the hidden ports in a comma seperated list to the oracle port
+ * and passes that response on to oraclePortHandler2.
+ * @param sock The socket that sends the data.
+ * @param secret_ports The hidden ports
+ * @param dest_ip The IP-address of the destination
+ * @param port The port to send the info to
+ * @param secret_msg The secret message, which is needed later.
+ * @return TODO: Figure out what to return here.
+ */
+string oraclePortHandler(int sock, vector<string> secret_ports, const string &dest_ip, int port,
+                         const string& secret_msg) {
+//    Creating the comma separated list to send to the port.
+    string secret_ports_csl;
+    for (int i = 0; i < secret_ports.size(); i++) {
+        secret_ports_csl += secret_ports[i];
+        if (i < secret_ports.size() - 1) {
+            secret_ports_csl += ", ";
+        }
+    }
+    char buff_special_msg[1400];
+    strcpy(buff_special_msg, secret_ports_csl.c_str());
+    string response = sendAndReceive(sock, buff_special_msg, dest_ip, port);
+    return oraclePortHandler2(sock, dest_ip, response, secret_msg);
+}
+
+/**
+ * Parses the response of the previous handler and knocks on the hidden ports.
+ * This response is sent to oraclePortHandler3;
+ * @param sock The socket it uses to send the data.
+ * @param dest_ip The IP-address of the destination.
+ * @param previous_response The response that the previous handler received.
+ * @param secret_msg The secret message that needs to be sent to each of the hidden ports as a knock.
+ * @return TODO: Figure out what to return here.
+ * If the program did not send the previous message correctly, then it will return the empty string.
+ */
+string oraclePortHandler2(int sock, const string &dest_ip, string previous_response, const string& secret_msg) {
+/* This character corresponds to successfully sending the comma seperated list, correctly formatted, to the oracle port.
+ * To summarise what has been stated previously for what the next step is.
+ * The port will send the program a different comma seperated list.
+ * The program needs to knock on these ports in the correct order to get the secret message.
+ * When it has done so, the final port will respond with "You have knocked. You may enter". */
+    char key_char1_2 = '4';
+
+    if (previous_response[0] == key_char1_2) {
+//        Conversion from the received comma separated list to a vector of ports.
+        vector<int> port_knox = stringVecToIntVec(split(previous_response, ","));
+        char buff[1400];
+        strcpy(buff, secret_msg.c_str());
+        vector<string> responses = sendAndReceive(sock, buff, dest_ip, port_knox);
+
+//        Prints out the response we got from the server
+        cout << "The server responded:" << endl;
+        for (auto&& response : responses) {
+            cout << response << endl;
+        }
+        return oraclePortHandler3(sock, dest_ip, responses, port_knox);
+    }
+    return "";
+}
+
+/**
+ * This function enters the hidden port.
+ * @param sock The socket it uses to send the data.
+ * @param dest_ip The IP-address of the destination.
+ * @param responses All the responses from each port they got from the previous handler.
+ * Only the last response is valuable.
+ * @param port_knox The ports it sent the previous data to.
+ * @return TODO: Figure out what to return here.
+ * If the program did not send the previous message correctly, then it will return the empty string.
+ */
+string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox) {
+/* This character corresponds to successfully sending the port knocks in the correct order.
+ * When done so, the final hidden port will send the message starting with this character. */
+    char key_char1_3 = 'Y';
+
+    if (responses[responses.size() - 1][0] == key_char1_3) {
+//        TODO: implement this
     }
     return "";
 }
