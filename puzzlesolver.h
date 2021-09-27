@@ -7,4 +7,8 @@
 
 void runPuzzle(int argc, char *argv[]);
 
+<<<<<<< HEAD
 #endif //COMP_NW_ASS2_PUZZLESOLVER_H
+=======
+#endif //COMP_NW_ASS2_PUZZLESOLVER_H
+>>>>>>> d2f71a933df3313ed8d0ad8915345573fb7beec3
