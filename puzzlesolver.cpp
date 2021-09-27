@@ -22,8 +22,7 @@
 #include <algorithm>
 using namespace std;
 
-// TODO: Remove most of the hexadecimal things.
-//  We often convert from binary to hexadecimal for seemingly no reason in the end
+// TODO: Remove unused methods in the end.
 
 bool hardCodeHiddenPorts = true;
 // Used for testing TODO: Set all to false in final version.
@@ -94,13 +93,23 @@ string oraclePortHandler2(int sock, const string &dest_ip, string previous_respo
 
 void runPuzzle(int argc, char *argv[]);
 
-// TODO: UNCOMMENT THIS FOR THE FINAL VERSION
+string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox);
+
+// TODO: UNCOMMENT FOR THE FINAL VERSION
+///**
+// * @see runPuzzle()
+// */
 //int main(int argc, char *argv[]) {
 //    runPuzzle(argc, argv);
 //}
 
-string oraclePortHandler3(int sock, const string &dest_ip, vector<string> responses, const vector<int>& port_knox);
-
+/**
+ * Main method that runs the code. Is originally used for easy testing, now it is just the forwarded actual main method.
+ * @param argc The number of arguments, the user gave on the command line.
+ * Only from the 2nd argument onwards, the arguments are usable, since the first argument is just the command itself.
+ * @param argv The arguments, the user gave on the command line.
+ * Only from the 2nd argument onwards, the arguments are usable, since the first argument is just the command itself.
+ */
 void runPuzzle(int argc, char *argv[]) {
 //    Default ip-address, in case the user did not enter any parameters.
     string dest_ip = "130.208.242.120";
@@ -172,6 +181,7 @@ void runPuzzle(int argc, char *argv[]) {
  */
 string hexToBin(const string& hexadecimal_string) {
     string bin;
+//    Loops over each hexadecimal character, converts it to its binary form and appends it to the binary string.
     for (auto&& hexadecimal : hexadecimal_string) {
         stringstream stream;
         stream << hex << hexadecimal;
@@ -184,6 +194,15 @@ string hexToBin(const string& hexadecimal_string) {
     return bin;
 }
 
+/**
+ * Decreases the binary string by the given amount.
+ * @param bin The binary string
+ * @param decrement The amount the binary string needs to be decreased by
+ * @return A new binary string, decreased by the specified amount.
+ * If the given decrement is larger than the number the binary string represents,
+ * then it will return the empty string. It also does not keep the original size.
+ * Namely, it will remove any trailing 0's.
+ */
 string decrementBin(string bin, int decrement) {
     for (int i = 0; i < decrement; i++) {
         char last_bit = bin[bin.size() - 1];
@@ -192,7 +211,12 @@ string decrementBin(string bin, int decrement) {
             case '0':
                 replacement = "1";
                 if (bin.size() > 1) {
-                    bin = decrementBin(bin.substr(0, bin.size() - 1), 1).append(replacement);
+                    string prefix = decrementBin(bin.substr(0, bin.size() - 1), 1);
+                    bin = prefix.append(replacement);
+                } else {
+//                    If you arrive at the left-most element, and it finds a '0' there, return the empty string,
+//                    so the string size gets decreased.
+                    return "";
                 }
                 break;
             case '1':
@@ -227,6 +251,20 @@ string binToHex(const string& bin) {
     return hex_hext;
 }
 
+/**
+ * Decreases the hexadecimal string by the given amount.
+ * This method uses a string that represents all the hexadecimal characters in order.
+ * So, it replaces the current character with the previous one if possible.
+ * If that isn't possible,
+ * then it will try to perform this operation on the hexadecimal string to the left of this character.
+ * If there is no such string, it will return the empty string.
+ * @param hex The hexadecimal string that needs to be decreased.
+ * @param decrement The amount, the string needs to be decreased by.
+ * @return A new hexadecimal string, decreased by the specified amount.
+ * If the given decrement is larger than the number the hexadecimal string represents,
+ * then it will return the empty string. It also does not keep the original size.
+ * Namely, it will remove any trailing 0's.
+ */
 string decrementHex(string hex, unsigned int decrement) {
     for (int i = 0; i < decrement; i++) {
         char last_el = (char) tolower(hex[hex.size() - 1]);
@@ -234,11 +272,10 @@ string decrementHex(string hex, unsigned int decrement) {
         string replacement;
         if (idx_of_last != 0) {
             replacement = getHexChars()[idx_of_last - 1];
-        }
-        else {
+        } else {
             replacement = getHexChars()[getHexChars().size() - 1];
-            if (hex == "0") {
-                return hex;
+            if (hex.size() == 1) {
+                return "";
             }
             hex = decrementHex(hex.substr(0, hex.size() - 1), 1).append(replacement);
         }
@@ -247,6 +284,18 @@ string decrementHex(string hex, unsigned int decrement) {
     return hex;
 }
 
+/**
+ * Increases the hexadecimal string by the given amount.
+ * This method uses a string that represents all the hexadecimal characters in order.
+ * So, it replaces the current character with the next one if possible.
+ * If it isn't possible,
+ * then it will try to perform this operation on the hexadecimal string to the left of this character.
+ * If there is no such string, it will extend the string and then try it.
+ * @param hex The hexadecimal string that needs to be increased.
+ * @param decrement The amount, the string needs to be increased by.
+ * @return A new hexadecimal string, increased by the specified amount. It does not keep the original size.
+ * Namely, it will increase in size if overflow would happen otherwise.
+ */
 string incrementHex(string hex, int increment) {
     debugPrint("inc", increment, false);
     for (int i = 0; i < increment; i++) {
@@ -260,6 +309,7 @@ string incrementHex(string hex, int increment) {
         else {
             replacement = getHexChars()[0];
             if (hex.size() == 1) {
+//                Extend the string, so another increment is possible.
                 hex = hex.insert(0, replacement);
             }
             hex = incrementHex(hex.substr(0, hex.size() - 1), 1).append(replacement);
@@ -269,14 +319,27 @@ string incrementHex(string hex, int increment) {
     return hex;
 }
 
+/**
+ * Adds both hexadecimals to each other.
+ * It converts one hexadecimal into an integer and increments the other by that amount.
+ * @param hex1 A hexadecimal string
+ * @param hex2 A hexadecimal string
+ * @return The outcome of hex1 + hex2.
+ */
 string hexAddition(string hex1, const string& hex2) {
     int hex2_as_int = stoi(hex2, nullptr, 16);
     debugPrint("hex2 as int", hex2_as_int, false);
     return incrementHex(std::move(hex1), hex2_as_int);
 }
 
+/**
+ * Splits the given hexadecimal string into hextets and adds all these together.
+ * @param hex A hexadecimal string
+ * @return A hexidecimal string, not a hextet, because it could be overflowing. So, the overflow is kept.
+ */
 string hextetSum(const string& hex) {
     string hextet_sum = "0000";
+//    A hextet uses 4 hexadecimal character, since hexadecimal is base 4 and a hextet consists of 16 bits.
     int step_size = 4;
     for (int i = 0; i < hex.size(); i += step_size) {
         string hextet = hex.substr(i, step_size);
@@ -287,17 +350,28 @@ string hextetSum(const string& hex) {
     return hextet_sum;
 }
 
+/**
+ * Flips all of the hexadecimal characters. E.g. 'f' becomes '0', 'a' becomes '5', '7' becomes '8', etc.
+ * @param hex A hexadecimal string
+ * @return The given hexadecimal string, inverted.
+ */
 string invHex(const string& hex) {
     string hex_inv;
 
     for (auto &&el : hex) {
         unsigned int idx_of_el = getHexChars().find(el);
-        hex_inv += getHexChars()[getHexChars().size() - 1- idx_of_el];
+        hex_inv += getHexChars()[getHexChars().size() - 1 - idx_of_el];
     }
     debugPrint("hex_inv", hex_inv, false);
     return hex_inv;
 }
 
+/**
+ * Converts the IP-address to a binary string. This is performed by splitting the address into integers,
+ * converting those to binary and appending those.
+ * @param ip The IP-address in regular form.
+ * @return The binary representation of the IP-address.
+ */
 string ipToBin(const string& ip) {
     string result;
 
@@ -311,7 +385,14 @@ string ipToBin(const string& ip) {
     return result;
 }
 
+/**
+ * Calculates the correct checksum for the IPV4-header. For more info:
+ * https://en.wikipedia.org/wiki/IPv4_header_checksum
+ * @param ip_hdr The IPV4-header without the checksum filled in, or it does, I don't care, this method doesn't use it
+ * @return The correct checksum.
+ */
 uint16_t ipChecksum(struct iphdr ip_hdr) {
+//    Splits everything into hextets.
     string version = bitset<4>(ip_hdr.version).to_string();
     string ihl = bitset<4>(ip_hdr.ihl).to_string();
     string tos = bitset<8>(ip_hdr.tos).to_string();
@@ -333,19 +414,33 @@ uint16_t ipChecksum(struct iphdr ip_hdr) {
     uint32_t dest_ip_hext1 = stoi(dest_ip.substr(0, 16), nullptr, 2);
     uint32_t dest_ip_hext2 = stoi(dest_ip.substr(16, 16), nullptr, 2);
 
+//    Add the hextets together
     uint32_t hext_sum = version_IHL_DSCP_ECN_hextet + tot_len + id + flag_frag_hext + ttl_protocol_hextet +
                         src_ip_hext1 + src_ip_hext2 + dest_ip_hext1 + dest_ip_hext2;
     debugPrint("h_sum", hext_sum, false);
 
+//    Remove overflow
     hext_sum = removeShortOverflow(hext_sum);
     debugPrint("h_sum", hext_sum, false);
 
+//    Invert
     uint16_t inv_hext = stoi(invBin(bitset<16>(hext_sum).to_string()), nullptr, 2);
 
+//    Tada!
     return inv_hext;
 }
 
+/**
+ * !!! THIS METHOD IS NOT WATERPROOF, BUT IT IS UNUSED FOR NOW, SO I DON'T CARE !!!
+ * Reverse engineers the IPV4-header checksum calculation to create a custom ID, so the IPV4-header is valid.
+ * For more info: https://en.wikipedia.org/wiki/IPv4_header_checksum
+ * @param desired_checksum This is the checksum we want our IPV4-header to have.
+ * @param calc_checksum This is the checksum that was calculated by using the default fields.
+ * @return The ID that the IPV4-header should have to get the desired checksum.
+ * @see adaptedUDPSrcPort for a better method
+ */
 string createCorrectId(const string& desired_checksum, const string& calc_checksum) {
+//    !!! THIS METHOD IS NOT WATERPROOF, BUT IT IS UNUSED FOR NOW, SO I DON'T CARE !!!
     string id = "0000";
     string cal_checksum_hex = binToHex(calc_checksum);
     debugPrint("des_sc", desired_checksum, false);
@@ -356,12 +451,24 @@ string createCorrectId(const string& desired_checksum, const string& calc_checks
         cal_checksum_hex = incrementHex(cal_checksum_hex, 1);
     }
     return hexToBin(id);
+//    !!! THIS METHOD IS NOT WATERPROOF, BUT IT IS UNUSED FOR NOW, SO I DON'T CARE !!!
 }
 
+/**
+ * Converts the binary string to a character. Needless to say, this binary string should not exceed 8 bits (char size).
+ * @param bin A binary string consisting of 8 bits.
+ * @return The binary string converted into a char.
+ */
 char binToChar(const string& bin) {
     return (char) stoi(bin, nullptr, 2);
 }
 
+/**
+ * Converts the binary string into a string of characters.
+ * Needless to say, the length of the binary string must be divisible by 8, since a character consists of 8 bits.
+ * @param bin A binary string, which length must be divisible by 8.
+ * @return A string of chars.
+ */
 string binToCharString(const string& bin) {
     string chars;
     int step_size = 8;
@@ -372,33 +479,45 @@ string binToCharString(const string& bin) {
     return chars;
 }
 
+/**
+ * Creation of the IPV4-header.
+ * @param src_ip The source IP-address as a binary string.
+ * @param dest_ip The source IP-address as a binary string.
+ * @param flag Integer representation of the flags bitset of size 3.
+ * @return A valid IPV4-header.
+ */
 struct iphdr createIPHeader(const string& src_ip, const string& dest_ip, unsigned int flag) {
     struct iphdr ip_hdr{};
 //    Creation of all the header fields.
-//    Version = 4, because ipv4
+
+//    Version = 4, because IPV4
     unsigned int version = htons(4);
 //    IHL = 5, because no options
     unsigned int ihl = htons(5);
 //    DSCP = 0, because not necessary here
 //    ECN = 0, because not necessary here
+//    These fields are merged, since they are merged in the struct.
     uint8_t dscp_ecn = htons(0);
-//    Total length = 28, because IP + UDP header = 20 bytes + 8 bytes respectively
+//    Total length = 28, because size of IP + UDP header = 20 bytes + 8 bytes, respectively
     uint16_t len_total = htons(28);
 //    Identification = 0, because not necessary here
     uint16_t id = htons(0);
 //    Flags = 0, because doesn't matter here
 //    Fragment offset = 0, data is at regular position
+//    These fields are merged, since they are merged in the struct.
     string flag_str = bitset<3>(flag).to_string();
     string frag_off = bitset<13>(0).to_string();
     uint16_t flag_frag = htons(stoi(flag_str + frag_off,nullptr, 2));
-//    Time To Live = 250, so we can have a decent TTL
+//    Time To Live = 250, so the packet won't easily get dropped on the way
     uint8_t ttl = htons(250);
 //    Protocol = 17, because UDP
     uint8_t protocol = htons(17);
 //    Header checksum = 0, so it won't be checked :)
     uint16_t ip_checksum = htons(0);
-//    For th ip-addresses, stoll is used, because they can't fit in a positive integer.
-//    Since that uses 31 bits for the default 32 bit env.
+
+/* For th ip-addresses, stoll is used, because they can't always fit in a positive integer.
+ * Since that uses 31 bits for the default 32 bit environment */
+
 //    Source IP address
     debugPrint("src_ip", src_ip, false);
     uint32_t src_ip_int = htons(stoll(ipToBin(src_ip), nullptr, 2));
@@ -424,6 +543,11 @@ struct iphdr createIPHeader(const string& src_ip, const string& dest_ip, unsigne
     return ip_hdr;
 }
 
+/**
+ * Flip the bits in the binary string.
+ * @param bin A binary string.
+ * @return The inverted binary string.
+ */
 string invBin(string bin) {
     string bin_inv;
     for (char & bit : bin) {
@@ -437,6 +561,20 @@ string invBin(string bin) {
     return bin_inv;
 }
 
+/**
+ * Reverse engineers the UDP-header checksum calculation to create a different source port.
+ * This way, a valid UDP-header can be created with a custom checksum. For more info:
+ * https://en.wikipedia.org/wiki/User_Datagram_Protocol#IPv4_pseudo_header
+ * @param udp_hdr The UDP-header which may or may not contain a source port already.
+ * This method doesn't look at it anyways. It does however, need to contain the altered checksum already.
+ * @param src_ip The source IP-address, which is used to create the IPV4 pseudo header.
+ * Which, in turn, is used to do the UDP-header checksum calculation,
+ * thus the reverse engineering of that same calculation.
+ * @param dest_ip The IP-address of the destination, which is used to create the IPV4 pseudo header.
+ * Which, in turn, is used to do the UDP-header checksum calculation,
+ * thus the reverse engineering of that same calculation.
+ * @return The variable that the source port should be set to, encountered for the checksum.
+ */
 uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& src_ip, const string& dest_ip) {
     uint16_t correct_UDP_src_port;
     string src_ip_bin = ipToBin(src_ip);
