@@ -8,123 +8,55 @@
 #include <iostream>
 #include <vector>
 #include <ctime>
+using namespace std;
 
-struct sockaddr_in sock_opts(int sock, int dest_ip);
+int noOfRetries = 10;
+// In milliseconds
+int timeout = 400;
+// Used for testing TODO: Set to true in final version.
+bool debugOverride = false;
 
-int socket_creation();
+struct sockaddr_in sockOpts(int sock, const string &destIP);
 
-struct sockaddr_in sock_opts(int sock, const std::string& dest_ip) {
-    struct sockaddr_in destaddr;
-    destaddr.sin_family = AF_INET;
-    inet_aton(dest_ip.c_str(), &destaddr.sin_addr);
+int socketCreation();
 
-    struct timeval tv;
-//    timeout of half a second
-    tv.tv_sec = 0;
-    tv.tv_usec = 500000;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-        perror("Could not change socket options");
-    }
-    return destaddr;
-}
+bool checkIp(const string& argument);
 
-/**
- * @see [How to convert a command-line argument to int?](https://stackoverflow.com/a/2797823)
- * @param arg The argument that should be converted into an integer.
- * @return The argument, converted into an integer.
- * @throw An error if the given argument cannot be converted into a number.
- * I.e., it has characters that are not numbers.
- */
-int char_pointer_to_int(char *argument) {
-    std::string arg(argument);
-    try {
-        std::size_t pos;
-        int result = std::stoi(arg, &pos);
-        if (pos < arg.size()) {
-            std::cerr << "Trailing characters after number: " << arg << '\n';
-        }
-        return result;
-    } catch (std::invalid_argument const &ex) {
-        std::cerr << "Invalid number: " << arg << '\n';
-    } catch (std::out_of_range const &ex) {
-        std::cerr << "Number out of range: " << arg << '\n';
-    }
-    throw std::invalid_argument("Invalid argument");
-}
+vector<int> findOpenPorts(const string &destIP, int from, int to, int sock, int max_ports);
 
-/**
- * Turns the argument into a valid ip-address.
- * @throw if the argument is not in a valid ip-address form.
- */
-void check_ip(const char *argument) {
-    std::string arg(argument);
-    std::string delimiter = ".";
+vector<string> sendAndReceive(int sock, char *buffer, const string &destIP, const vector<int>& dest_ports);
 
-    unsigned long prev_ind_occ = 0;
-    unsigned long ind_occ = arg.find(delimiter);
-    while (ind_occ != std::string::npos) {
-        unsigned long ind_diff = ind_occ - prev_ind_occ;
-        char *prefix = new char[ind_diff + 1];
-        strcpy(prefix, arg.substr(prev_ind_occ, ind_diff).c_str());
-        char_pointer_to_int(prefix);
-        prev_ind_occ = ind_occ + 1;
-        ind_occ = arg.find(delimiter, prev_ind_occ);
-    }
-    unsigned long ind_diff = arg.size() - prev_ind_occ;
-    char *prefix = new char[ind_diff + 1];
-    strcpy(prefix, arg.substr(prev_ind_occ).c_str());
-    char_pointer_to_int(prefix);
-}
+string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port);
 
-std::vector<int> find_open_ports(struct sockaddr_in destaddr, int from, int to, int sock, const void *buff, size_t buff_len) {
-    std::vector<int> open_ports;
-    char recv_buff[1400];
-    
-//    Loop over all requested port numbers
-    for (int port_no = from; port_no <= to; port_no++) {
-        destaddr.sin_port = htons(port_no);
-//        amount of times you want to try and send the message and try to receive one as well.
-//        If it didn't receive anything, we conclude that the port is not open.
-        int retries = 5;
-        while(retries > 0) {
-            try {
-                if (sendto(sock, buff, buff_len, 0, (const struct  sockaddr *)&destaddr, sizeof(destaddr)) < 0) {
-                    perror("Could not send");
-                }
-                else {
-//                    Detects whether anything is received.
-                    recvfrom(sock, recv_buff, sizeof(recv_buff), 0, (struct  sockaddr *) &destaddr,
-                             reinterpret_cast<socklen_t *>(sizeof(destaddr)));
-//                    Error number 14 means bad address, but it receives the correct info. So it works.
-                    if (errno == 14) {
-//                        The port is open, so we add the port number to the open ports vector
-//                        and the while loop is exited to continue the for loop, to check for other ports.
-                        open_ports.push_back(port_no);
-                        break;
-                    }
-                    memset(recv_buff, 0, sizeof(recv_buff));
-                }
-                retries--;
-            }
-            catch(const std::overflow_error& e){
-                throw "could not send";
-            }
-        }
-    }
-    return(open_ports);
-}
+void debugPrint(const string &argName, const string &arg, bool debug);
 
-int main(int argc, char *argv[]) {
-//    Default parameters which might be changed depending on how many arguments are given.
-    std::string dest_ip = "130.208.242.120";
+void debugPrint(const string &argName, unsigned long arg, bool debug);
+
+vector<string> split(const string& strToSplit, const string& delim);
+
+vector<int> stringVecToIntVec(const vector<string>& strVec);
+
+void runScanner(int argc, char *argv[]);
+
+// TODO: UNCOMMENT THIS FOR THE FINAL VERSION
+//int main(int argc, char *argv[]) {
+//    runScanner(argc, argv);
+//}
+
+void runScanner(int argc, char *argv[]) {
+/* Default parameters which might be changed depending on how many arguments are given.
+ * This is handy for testing, and for when the user did not give enough parameters. */
+
+//    Default ip
+    string dest_ip = "130.208.242.120";
 //    Start scanning ports from this port number
     int from = 4000;
 //    Until (inclusive) this port number
     int to = 4100;
-//    Take care of given arguments. We want 3 arguments, 'ip-address', 'low port, and 'high port' respectively.
-//    The first argument is the ip-address of the destination.
-//    The second one is the lowest port it needs to scan activity for.
-//    The last argument is the last port, the program needs to scan activity for.
+/* Take care of given arguments. We want 3 arguments, 'ip-address', 'low port, and 'high port' respectively.
+ * The first argument is the ip-address of the destination.
+ * The second one is the lowest port it needs to scan activity for.
+ * The last argument is the last port, the program needs to scan activity for. */
 
 //    Too many arguments were given, only use the useful ones. And let the user know they are stupid.
     if (argc > 4) {
@@ -134,54 +66,67 @@ int main(int argc, char *argv[]) {
 
     if (argc > 3) {
         dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
-        from = char_pointer_to_int(argv[2]);
-        to = char_pointer_to_int(argv[3]);
+        checkIp(dest_ip);
+        from = stoi(argv[2], nullptr, 10);
+        to = stoi(argv[3], nullptr, 10);
         if (to < from) {
-            throw std::invalid_argument("High port is lower than low port");
+            throw invalid_argument("High port is lower than low port");
         }
-    } else if (argc == 3) {
+    }
+    else if (argc == 3) {
         dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
-        from = char_pointer_to_int(argv[2]);
+        checkIp(dest_ip);
+        from = stoi(argv[2], nullptr, 10);
         to = from + 100;
         printf("You have given 2 arguments, whereas 3 were expected.\n"
                "The third parameter, 'high port', will be set to: %s\n",
-               std::to_string(to).c_str());
-    } else if (argc == 2) {
+               to_string(to).c_str());
+    }
+    else if (argc == 2) {
         dest_ip = argv[1];
-        check_ip(dest_ip.c_str());
+        checkIp(dest_ip);
+        bool potato = true;
         printf("You have given 1 argument, whereas 3 were expected.\n"
                "The second parameter, 'low port', will be set to: %s\n"
                "The third parameter, 'high port', will be set to: %s\n",
-               std::to_string(from).c_str(), std::to_string(to).c_str());
-    } else {
+               to_string(from).c_str(), to_string(to).c_str());
+    }
+    else {
         printf("You have given 0 arguments, whereas 3 were expected.\n"
                "The first parameter, 'ip-address', will be set to: %s\n"
                "The second parameter, 'low port', will be set to: %s\n"
                "The third parameter, 'high port', will be set to: %s\n",
-               dest_ip.c_str(), std::to_string(from).c_str(), std::to_string(to).c_str());
+               dest_ip.c_str(), to_string(from).c_str(), to_string(to).c_str());
     }
-    
-    int sock = socket_creation();
-    if (sock == -1) {
-        return(-1);
-    }
-    struct sockaddr_in destaddr = sock_opts(sock, dest_ip);
-    
-//    The msg sent to the port
-    char buffer[1400];
-    strcpy(buffer, "Hey Port");
 
-    int buff_len = strlen(buffer) + 1;
-    
+    int sock = socketCreation();
+    if (sock == -1) {
+        perror("socket was not created.");
+    }
+    sockOpts(sock, dest_ip);
+
     printf("The open parts are: ");
-    for (auto el : find_open_ports(destaddr, from, to, sock, buffer, buff_len)) {
-        std::cout << el << ", ";
+    for (auto el : findOpenPorts(dest_ip, from, to, sock, 4)) {
+        cout << el << ", ";
     }
 }
 
-int socket_creation() {
+struct sockaddr_in sockOpts(int sock, const string &destIP) {
+    struct sockaddr_in dest_address{};
+    dest_address.sin_family = AF_INET;
+    inet_aton(destIP.c_str(), &dest_address.sin_addr);
+
+    struct timeval tv{};
+//    timeout of half a second
+    tv.tv_sec = 0;
+    tv.tv_usec = timeout * 1000;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        perror("Could not change socket options");
+    }
+    return dest_address;
+}
+
+int socketCreation() {
 //    The UDP socket
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
 //    If the program cannot open a socket, raise an error and stop.
@@ -190,4 +135,158 @@ int socket_creation() {
         return(-1);
     }
     return(sock);
+}
+
+/**
+ * Finds whether the given string is in the form of an IP-address. (digits separated by periods)
+ * @return if the given string is a correctly formed ip-address
+ */
+bool checkIp(const string& argument) {
+    try {
+        vector<string> ip_bytes = split(argument, ".");
+        vector<int> ip_as_ints = stringVecToIntVec(ip_bytes);
+    } catch (...) {
+//        If the conversion did not work, the IP-address is formatted incorrectly.
+        return false;
+    }
+    return true;
+}
+
+vector<int> findOpenPorts(const string &destIP, int from, int to, int sock, int max_ports) {
+//    The msg sent to the port
+    char buffer[1400];
+    strcpy(buffer, "Hey Port");
+    vector<int> open_ports;
+    
+//    Loop over all requested port numbers
+    for (int port_no = from; port_no <= to; port_no++) {
+        string response = sendAndReceive(sock, buffer, destIP, port_no);
+        if (!response.empty()) {
+            open_ports.push_back(port_no);
+        }
+        if (open_ports.size() == max_ports) {
+            break;
+        }
+    }
+    return(open_ports);
+}
+
+/**
+ * Tries to send a message and receive the response to the ports in the same order they are given in
+ * @param sock The socket it needs to send the messages to
+ * @param buffer The message that needs to be sent.
+ * @param destIP The ip-address that needs to receive the message.
+ * @param dest_ports The ports that the message need to be sent to.
+ * @return The received message if there is any. If there is no response, then it will return the empty string.
+ */
+vector<string> sendAndReceive(int sock, char *buffer, const string &destIP, const vector<int>& dest_ports) {
+//    Stores all the responses inside this vector.
+    vector<string> responses;
+/* This character represents the first character of the message saying that there was a checksum error server-side.
+ * The program will retry that port. */
+    char error_char = 'R';
+    struct sockaddr_in dest_address{};
+    dest_address.sin_family = AF_INET;
+    inet_aton(destIP.c_str(), &dest_address.sin_addr);
+    char receive_buff[1400];
+/* Amount of times you want to try and send the message and try to receive one as well.
+ * If it didn't receive anything, we conclude that the port is not open. */
+    for (int i = 0; i < noOfRetries; i++)  {
+//        Sends the ports in the given order
+        for (auto&& dest_port : dest_ports) {
+            dest_address.sin_port = htons(dest_port);
+            try {
+                if (sendto(sock, buffer, strlen(buffer), 0, (const struct sockaddr *) &dest_address,
+                           sizeof(dest_address)) < 0) {
+//                    Could not send the msg
+                    perror("Could not send");
+                }
+                else {
+//                    Detects whether anything is received.
+                    memset(receive_buff, 0, sizeof(receive_buff));
+                    struct sockaddr_in receive_address{};
+                    socklen_t address_len = sizeof(receive_address);
+                    ssize_t output_len = recvfrom(sock, receive_buff, sizeof(receive_buff), 0,
+                                                  (struct sockaddr*)&receive_address, &address_len);
+                    string sender_ip = inet_ntoa(receive_address.sin_addr);
+                    unsigned int sender_port = ntohs(receive_address.sin_port);
+                    debugPrint("sender ip", inet_ntoa(receive_address.sin_addr), false);
+                    debugPrint("sender port", ntohs(receive_address.sin_port), false);
+
+//                    Ensures that we get the message from the correct ip and port
+                    if (output_len > 0 and sender_ip == destIP and sender_port == dest_port) {
+                        debugPrint("receive_buff", receive_buff, false);
+                        char first_char = receive_buff[0];
+                        if (first_char == error_char) {
+//                            There is a random checksum error server-side. Try sending and receiving again.
+                            break;
+                        }
+                        responses.emplace_back(receive_buff);
+                    }
+                }
+            }
+            catch (const overflow_error &e) {
+                throw overflow_error("could not send");
+            }
+        }
+        if (responses.size() == dest_ports.size()) {
+            return responses;
+        } else {
+            responses.clear();
+        }
+    }
+    return responses;
+}
+
+/**
+ * Tries to send a message and receive the response to the given port
+ * @param sock The socket it needs to send the message to
+ * @param buffer The message that needs to be sent.
+ * @param dest_ip The ip-address that needs to receive the message.
+ * @param dest_port The port that the message need to be sent to.
+ * @return The received message if there is any. If there is no response, then it will be the empty string.
+ */
+string sendAndReceive(int sock, char *buffer, const string &dest_ip, int dest_port) {
+    vector<int> dest_ports;
+    dest_ports.push_back(dest_port);
+    return sendAndReceive(sock, buffer, dest_ip, dest_ports)[0];
+}
+
+void debugPrint(const string &argName, const string &arg, bool debug) {
+    if (!debugOverride && debug) {
+        cout << argName + "=" << arg << "\n";
+    }
+}
+
+void debugPrint(const string &argName, unsigned long arg, bool debug) {
+    debugPrint(argName, to_string(arg), debug);
+}
+
+vector<string> split(const string& strToSplit, const string& delim) {
+    vector<string> split_string;
+
+    unsigned long prev_occur_idx = 0;
+    unsigned long occur_idx = strToSplit.find(delim);
+    while (occur_idx != string::npos) {
+        unsigned long ind_diff = occur_idx - prev_occur_idx;
+        string string_before_delim = strToSplit.substr(prev_occur_idx, ind_diff);
+        split_string.push_back(string_before_delim);
+        prev_occur_idx = occur_idx + delim.size();
+        occur_idx = strToSplit.find(delim, prev_occur_idx);
+    }
+    unsigned long ind_diff = occur_idx - prev_occur_idx;
+    string string_before_delim = strToSplit.substr(prev_occur_idx, ind_diff);
+    split_string.push_back(string_before_delim);
+
+    return split_string;
+}
+
+vector<int> stringVecToIntVec(const vector<string>& strVec) {
+    vector<int> result;
+
+    result.reserve(strVec.size());
+    for (const string& str : strVec) {
+        result.push_back(stoi(str, nullptr, 10));
+    }
+    return result;
 }
