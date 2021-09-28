@@ -23,6 +23,9 @@ const int programToRun = puzzleSolver;
 #include<errno.h> //For errno - the error number
 #include<netinet/udp.h>	//Provides declarations for udp header
 #include<netinet/ip.h>	//Provides declarations for ip header
+//#include <net/if.h>
+#include <sys/socket.h>
+//#include <string.h>
 ///
 
 #include <netinet/in.h>
@@ -1376,25 +1379,20 @@ string checksumPortHandler3(int sock, const string &destIP, int port, const stri
 }
 
 
-
+/**
+ * Creates valid IPV4- and UDP-headers and sends them as a payload.
+ * @param sock The socket used for sending.
+ * @param destIP The IP-address of the destination.
+ * @param port The port to send it to.
+ * @return TODO: Figure out what to return here.
+ */
 string evilPortHandler(int sock, const string &destIP, const int &port) {
 
- // 96 bit (12 bytes) pseudo header needed for udp header checksum calculation 
-struct pseudo_header
-{
-	u_int32_t source_address;
-	u_int32_t dest_address;
-	u_int8_t placeholder;
-	u_int8_t protocol;
-	u_int16_t udp_length;
-};
-
-//  TODO: Send group number with evil bit set to 1.
     const char* special_msg = "group_47$";
     char buff_special_msg[1400];
     // create raw socket
-    int s = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
-    if(s == -1)
+    int sock_raw = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if(sock_raw == -1)
 	{
 		//socket creation failed, may be because of non-root privileges
 		perror("Failed to create raw socket");
@@ -1410,86 +1408,67 @@ struct pseudo_header
 	struct udphdr *udph = (struct udphdr *) (datagram + sizeof (struct ip));
 	
 	struct sockaddr_in sin;
-	struct pseudo_header psh;
 	
-	//Data part
+	// Data part
 	data = datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
 	strcpy(data , "$group_47$");
-	//some address resolution
-	//strcpy(source_ip , "192.168.1.2");
 	
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(80);
-	//sin.sin_addr.s_addr = inet_addr ("192.168.1.1");
 
-    #define IP_EVIL	0x8000		/* Flag: "reserve bit"	*/
-	//Fill in the IP Header
+    // value for reserved / evil bit
+    #define IP_EVIL	0x8000
+
+	// IP Header
 	iph->ihl = 5;
 	iph->version = 4;
 	iph->tos = 0;
 	iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + strlen(data);
-	iph->id = htonl (54321);	//Id of this packet
-	//iph->frag_off = 32768;
-    //iph->frag_off & IP_EVIL;
-    iph->frag_off |= htons(IP_EVIL);	/* Set evil bit. */
+    // Id of this packet
+	iph->id = htonl (54321);	
+    // set evil bit
+    iph->frag_off |= htons(IP_EVIL);
 	iph->ttl = 255;
 	iph->protocol = IPPROTO_UDP;
-	iph->check = 0;		//Set to 0 before calculating checksum
-    //iph->saddr = inet_addr(inet_ntoa((((struct sockaddr_in *)&(ifreq_ip.ifr_addr))->sin_addr)));
-    iph->saddr = inet_addr ( source_ip );	//Spoof the source ip address
-    iph->daddr = inet_addr(destIP.c_str()); // put destination IP address
-	// iph->daddr = sin.sin_addr.s_addr;
+	iph->check = 0;	
+    // Spoof the source ip address
+    iph->saddr = inet_addr ( source_ip );	
+    // put destination IP address
+    iph->daddr = inet_addr(destIP.c_str());
 	
-	//Ip checksum
-	iph->check = 0;
-	//UDP header
+
+	// UDP header
 	udph->source = htons (6666);
 	udph->dest = htons (port);
-	udph->len = htons(8 + strlen(data)); //tcp header size
-	udph->check = 0;	//leave checksum 0 now, filled later by pseudo header
-	
-	//Now the UDP checksum using the pseudo header
-	psh.source_address = inet_addr( source_ip );
-	psh.dest_address = sin.sin_addr.s_addr;
-	psh.placeholder = 0;
-	psh.protocol = IPPROTO_UDP;
-	psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
-	
-	int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
-	pseudogram = (char *) malloc(psize);
-	memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
-	memcpy(pseudogram + sizeof(struct pseudo_header), udph , sizeof(struct udphdr) + strlen(data));
-	
+    // tcp header size
+	udph->len = htons(8 + strlen(data));
 	udph->check = 0;
 	
-    // for the recv function
-    int recv_sock = socket(AF_INET, SOCK_RAW, 17);
+    // Send the packet
+    if (sendto(sock_raw, datagram, iph->tot_len, 0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
+    {
+        perror("sendto failed");
+    }
+    // Data sent successfully
+    else
+    { 
+        // create udp socket to receive info
+        int recv_sock = socket(AF_INET, SOCK_DGRAM, 17);
+        // set socket to same port
+        const char *opt;
+        opt = "eth0";
+        int len = strnlen(opt, IFNAMSIZ);   // was const not int
+        setsockopt(recv_sock, 17, SO_BINDTODEVICE, opt, len);
+        char recv_buff[2000];
+        // Detects whether anything is received.
+        struct sockaddr_in receive_address{};
+        socklen_t address_len = sizeof(receive_address);
+        //recvfrom(recv_sock, recv_buff, sizeof(recv_buff), 0,(struct sockaddr*)&receive_address, &address_len);
+        debugPrint("sender ip", inet_ntoa(receive_address.sin_addr), false);
+        debugPrint("sender port", ntohs(receive_address.sin_port), false);
+        printf ("Packet Sent. Length : %d \n" , iph->tot_len);
+    }
 
-    struct timeval tv{};
-//    timeout of half a second
-    tv.tv_sec = 0;
-    tv.tv_usec = timeout * 1000;
-    //setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)); //maybe 17 for 2nd parameter, SO_BINDTODEVICE
-    // int bind(recv_sock, inet_addr(source_ip), sizeof(inet_addr(destIP.c_str())));//const struct sockaddr *addr, socklen_t addrlen);
-
-		//Send the packet
-		if (sendto(s, datagram, iph->tot_len, 0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
-		{
-			perror("sendto failed");
-		}
-		//Data sent successfully
-		else
-		{
-            char receive_buff[2000];
-            struct sockaddr_in receive_address{};
-            socklen_t address_len = sizeof(receive_address);
-            recvfrom(s, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&receive_address, &address_len);
-            printf ("Packet Sent. Length : %d \n" , iph->tot_len);
-            //make udp socket and set to the same port
-		}
-
-    //strcpy(buff_special_msg, special_msg);
-    //string response = sendAndReceive(s, buff_special_msg, destIP, port);
     if (!hardCodeHiddenPorts) {
 //        TODO: Change this to do something with the response.
 //        secret_ports.push_back(response);
