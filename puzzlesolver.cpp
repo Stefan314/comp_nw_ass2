@@ -27,7 +27,7 @@ using namespace std;
 
 // The payload if the program needs to send the group number.
 const char *groupNumber = "$group_47$";
-bool hardCodeHiddenPorts = true;
+bool hardCodeHiddenPorts = false;
 // Used for testing TODO: Set all to false in final version.
 bool hardCodedPorts = true;
 bool testChecksumPort = false;
@@ -1101,7 +1101,7 @@ void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const 
                 break;
             }
             case (keyChar3): {
-                if (not hardCodeHiddenPorts) {
+                if (not (hardCodeHiddenPorts or testChecksumPort)) {
 //            This is the evil port.
                     response = evilPortHandler(sock, destIP, open_port);
 //    TODO: Change this to do something with the response.
