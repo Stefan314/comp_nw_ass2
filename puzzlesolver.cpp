@@ -6,7 +6,6 @@
 #include <string>
 #include <cstring>
 #include <cstdio>
-#include <stdexcept>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -18,9 +17,10 @@
 #include <netinet/udp.h>
 #include <netinet/ip_icmp.h>
 #include <algorithm>
-#include <ctime>
+#include <sys/ioctl.h>
+#include <net/if.h>
 #include <stdint-gcc.h>
-//#include "scanner.h"
+#include "scanner.h"
 
 #define IP_EVIL	0x8000		/* Flag: "reserve bit"	*/
 using namespace std;
@@ -33,12 +33,13 @@ bool hardCodedPorts = true;
 bool testChecksumPort = false;
 
 // TODO: Remove unused methods in the end.
-
+/**/
 int noOfRetries = 10;
 // In milliseconds
 int timeout = 400;
 // Used for testing TODO: Set to true in final version.
 bool debugOverride = false;
+
 struct sockaddr_in sockOpts(int sock, const string &destIP);
 
 int socketCreation();
@@ -1092,20 +1093,25 @@ void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const 
                 break;
             }
             case (keyChar2): {
+                if (not hardCodeHiddenPorts) {
 //            This is the checksum port.
-                response = checksumPortHandler(sock, destIP, open_port);
+                    response = checksumPortHandler(sock, destIP, open_port);
 //    TODO: Change this to do something with the response.
+                }
                 break;
             }
             case (keyChar3): {
+                if (not (hardCodeHiddenPorts or testChecksumPort)) {
 //            This is the evil port.
-                response = evilPortHandler(sock, destIP, open_port);
+                    response = evilPortHandler(sock, destIP, open_port);
 //    TODO: Change this to do something with the response.
+                }
                 break;
             }
             case (keyChar4): {
 //            This is the parsing port.
                 string secret_port = response.substr(response.size() - 5, 4);
+                debugPrint("sec port", secret_port, false);
                 secret_ports.push_back(secret_port);
                 break;
             }
@@ -1134,10 +1140,8 @@ string checksumPortHandler(int sock, const string &destIP, const int &port) {
     strcpy(buff_group_msg, groupNumber);
     string response = sendAndReceive(sock, buff_group_msg, destIP, port);
 
-    if (!hardCodeHiddenPorts) {
-        response = checksumPortHandler2(sock, response, destIP, port);
+    response = checksumPortHandler2(sock, response, destIP, port);
 //    TODO: Change this to do something with the response.
-    }
     return parsed_string;
 }
 
@@ -1436,27 +1440,25 @@ string evilPortHandler(int sock, const string &destIP, const int &port) {
         // Data sent successfully
     else
     {
-        // create raw receive socket
-        int recv_sock = socket(AF_INET, SOCK_RAW, 17);
+        // create UDP receive socket
+        int recv_sock = socket(AF_INET, SOCK_DGRAM, 17);
         // set socket to same port
         const char *opt;
         opt = "eth0";
-//        int len = strnlen(opt, IFNAMSIZ);   // was const not int
-//        setsockopt(recv_sock, 17, SO_BINDTODEVICE, opt, len);
+        int len = strnlen(opt, IFNAMSIZ);   // was const not int
+        setsockopt(recv_sock, 17, SO_BINDTODEVICE, opt, len);
         char recv_buff[2000];
         // Detects whether anything is received.
         struct sockaddr_in receive_address{};
         socklen_t address_len = sizeof(receive_address);
         recvfrom(recv_sock, recv_buff, sizeof(recv_buff), 0,(struct sockaddr*)&receive_address, &address_len);
-        debugPrint("sender ip", inet_ntoa(receive_address.sin_addr), false);
-        debugPrint("sender port", ntohs(receive_address.sin_port), false);
-        printf ("Packet Sent. Length : %d \n" , iph->tot_len);
+        debugPrint("sender ip", inet_ntoa(receive_address.sin_addr), true);
+        debugPrint("sender port", ntohs(receive_address.sin_port), true);
+        debugPrint("resp", recv_buff, true);
     }
 
-    if (!hardCodeHiddenPorts) {
 //        TODO: Change this to do something with the response.
 //        secret_ports.push_back(response);
-    }
     return ""; //response;
 }
 
@@ -1482,6 +1484,7 @@ string oraclePortHandler(int sock, vector<string> secret_ports, const string &de
         }
     }
     char buff_special_msg[1400];
+    memset(buff_special_msg, 0, 1400);
     strcpy(buff_special_msg, secret_ports_csl.c_str());
     string response = sendAndReceive(sock, buff_special_msg, destIP, port);
     return oraclePortHandler2(sock, destIP, response, secretMsg);
