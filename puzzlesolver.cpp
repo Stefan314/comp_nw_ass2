@@ -22,7 +22,7 @@
 #include <stdint-gcc.h>
 #include "scanner.h"
 
-#define IP_EVIL	0x8000		/* Flag: "reserve bit"	*/
+#define IP_EVIL	0x8000 //reserved bit
 using namespace std;
 
 // The payload if the program needs to send the group number.
@@ -32,8 +32,6 @@ bool hardCodeHiddenPorts = false;
 bool hardCodedPorts = true;
 bool testChecksumPort = false;
 
-// TODO: Remove unused methods in the end.
-/**/
 int noOfRetries = 10;
 // In milliseconds
 int timeout = 400;
@@ -66,7 +64,7 @@ struct sockaddr_in sockOpts(int sock, const string &destIP) {
     inet_aton(destIP.c_str(), &dest_address.sin_addr);
 
     struct timeval tv{};
-//    timeout of half a second
+    // timeout of half a second
     tv.tv_sec = 0;
     tv.tv_usec = timeout * 1000;
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
@@ -76,9 +74,9 @@ struct sockaddr_in sockOpts(int sock, const string &destIP) {
 }
 
 int socketCreation() {
-//    The UDP socket
+    // The UDP socket
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
-//    If the program cannot open a socket, raise an error and stop.
+    // If the program cannot open a socket, raise an error and stop.
     if (sock < 0) {
         perror("Cannot open socket");
         return(-1);
@@ -288,7 +286,7 @@ string binToCharString(const string& bin);
 
 string checksumPortHandler(int sock, const string &destIP, const int &port);
 
-string evilPortHandler(int sock, const string &destIP, const int &port);
+void evilPortHandler(int sock, const string &destIP, const int &port);
 
 string checksumPortHandler2(int sock, string response, const string& destIP, int port);
 
@@ -694,7 +692,6 @@ uint16_t ipChecksum(struct iphdr ip_hdr) {
  * @see adaptedUDPSrcPort for a better method
  */
 string createCorrectId(const string& desiredChecksum, const string& calcChecksum) {
-//    !!! THIS METHOD IS NOT WATERPROOF, BUT IT IS UNUSED FOR NOW, SO I DON'T CARE !!!
     string id = "0000";
     string cal_checksum_hex = binToHex(calcChecksum);
     debugPrint("des_sc", desiredChecksum, false);
@@ -705,7 +702,6 @@ string createCorrectId(const string& desiredChecksum, const string& calcChecksum
         cal_checksum_hex = incrementHex(cal_checksum_hex, 1);
     }
     return hexToBin(id);
-//    !!! THIS METHOD IS NOT WATERPROOF, BUT IT IS UNUSED FOR NOW, SO I DON'T CARE !!!
 }
 
 /**
@@ -1103,7 +1099,7 @@ void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const 
             case (keyChar3): {
                 if (not (hardCodeHiddenPorts or testChecksumPort)) {
 //            This is the evil port.
-                    response = evilPortHandler(sock, destIP, open_port);
+                    evilPortHandler(sock, destIP, open_port);
 //    TODO: Change this to do something with the response.
                 }
                 break;
@@ -1171,7 +1167,6 @@ string checksumPortHandler2(int sock, string response, const string& destIP, int
 //    The previously mentioned values always start at the same index in the message.
     int checksumStartIdx = 146;
     int srcIpStartIdx = 186;
-
 //    Gets the new UDP checksum and the new source ip for the next msg from the response
 
 //    Since the checksum is in hexadecimal form and is one hextet long, it is always of length 4.
@@ -1373,9 +1368,9 @@ string checksumPortHandler3(int sock, const string &destIP, int port, const stri
  * @param sock The socket used for sending.
  * @param destIP The IP-address of the destination.
  * @param port The port to send it to.
- * @return TODO: Figure out what to return here.
+ * @return void.
  */
-string evilPortHandler(int sock, const string &destIP, const int &port) {
+void evilPortHandler(int sock, const string &destIP, const int &port) {
 
     const char* special_msg = "group_47$";
     char buff_special_msg[1400];
@@ -1429,9 +1424,6 @@ string evilPortHandler(int sock, const string &destIP, const int &port) {
     udph->len = htons(8 + strlen(data));
     udph->check = 0;
 
-    //setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)); //maybe 17 for 2nd parameter, SO_BINDTODEVICE
-    //int bind(recv_sock, inet_addr(source_ip), sizeof(inet_addr(destIP.c_str()));//const struct sockaddr *addr, socklen_t addrlen);
-
     // Send the packet
     if (sendto(sock_raw, datagram, iph->tot_len, 0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
     {
@@ -1456,10 +1448,6 @@ string evilPortHandler(int sock, const string &destIP, const int &port) {
         debugPrint("sender port", ntohs(receive_address.sin_port), true);
         debugPrint("resp", recv_buff, true);
     }
-
-//        TODO: Change this to do something with the response.
-//        secret_ports.push_back(response);
-    return ""; //response;
 }
 
 /**
