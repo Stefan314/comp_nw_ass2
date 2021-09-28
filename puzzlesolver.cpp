@@ -30,7 +30,7 @@ const char *groupNumber = "$group_47$";
 bool hardCodeHiddenPorts = false;
 // Used for testing TODO: Set all to false in final version.
 bool hardCodedPorts = true;
-bool testChecksumPort = true;
+bool testChecksumPort = false;
 
 // TODO: Remove unused methods in the end.
 
