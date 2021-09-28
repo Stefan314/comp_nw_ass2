@@ -10,9 +10,7 @@
 #include <iostream>
 #include <utility>
 #include <vector>
-#include "scanner.h"
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sstream>
 #include <bitset>
@@ -20,22 +18,18 @@
 #include <netinet/udp.h>
 #include <netinet/ip_icmp.h>
 #include <algorithm>
-using namespace std;
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string>
-#include <cstring>
-#include <cstdio>
-#include <stdexcept>
-#include <iostream>
-#include <vector>
 #include <ctime>
 using namespace std;
 
 int noOfRetries = 10;
 // In milliseconds
 int timeout = 400;
+// The payload if the program needs to send the group number.
+const char *groupNumber = "$group_47$";
+bool hardCodeHiddenPorts = false;
+// Used for testing TODO: Set all to false in final version.
+bool hardCodedPorts = true;
+bool testChecksumPort = true;
 // Used for testing TODO: Set to true in final version.
 bool debugOverride = false;
 
@@ -61,77 +55,151 @@ vector<int> stringVecToIntVec(const vector<string>& strVec);
 
 void runScanner(int argc, char *argv[]);
 
-// TODO: UNCOMMENT THIS FOR THE FINAL VERSION
-//int main(int argc, char *argv[]) {
-//    runScanner(argc, argv);
-//}
+// TODO: Remove unused methods in the end.
 
-void runScanner(int argc, char *argv[]) {
-/* Default parameters which might be changed depending on how many arguments are given.
- * This is handy for testing, and for when the user did not give enough parameters. */
+/**
+ * Clion got upset when I declared this as a global variable, so it's made into a function.
+ * @return All the hexadecimal characters in order.
+ */
+string getHexChars() {
+    return "0123456789abcdef";
+}
 
-//    Default ip
+void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const string& destIP);
+
+bool binLarger(string bin1, string bin2);
+
+string binDiff(const string& bin1, const string& bin2);
+
+string removeHextetOverflow(const string& header_sum);
+
+string adaptedUDPSrcPort(const string& udp_hdr, const string& srcIP, const string& destIP);
+
+string invBin(string bin);
+
+string hexToBin(const string& hexadecimalString);
+
+string decrementBin(string bin, int decrement);
+
+string incrementHex(string hex, int increment);
+
+string binToHex(const string& bin);
+
+string decrementHex(string hex, unsigned int decrement);
+
+string hexAddition(string hex1, const string& hex2);
+
+string hextetSum(const string& bin);
+
+string invHex(const string& hex);
+
+string ipToBin(const string& ip);
+
+uint16_t ipChecksum(struct iphdr ip_hdr);
+
+string createCorrectId(const string& desiredChecksum, const string& calcChecksum);
+
+unsigned char binToChar(const string& bin);
+
+string binToCharString(const string& bin);
+
+string checksumPortHandler(int sock, const string &destIP, const int &port);
+
+string evilPortHandler(int sock, const string &destIP, const int &port);
+
+string checksumPortHandler2(int sock, string response, const string& destIP, int port);
+
+string checksumPortHandler3(int sock, const string &destIP, int port, const string& newUDPChecksum,
+                            const string& newSrcIp);
+
+string oraclePortHandler(int sock, vector<string> secret_ports, const string &destIP, int port,
+                         const string& secretMsg);
+
+string oraclePortHandler2(int sock, const string &destIP, string previous_response, const string& secretMsg);
+
+void runPuzzle(int argc, char *argv[]);
+
+string oraclePortHandler3(int sock, const string &destIp, vector<string> responses, const vector<int> &portKnox,
+                          const string& secretMsg);
+
+string createHeaders(const string &newSrcIP, const string &destIP, unsigned int flag,
+                     const string &newUDPChecksum, int port);
+
+string createIPHeader(const string& srcIP, const string& destIP, unsigned int flag);
+
+string createUDPHeader(int dest_port, const string& checksum, const string& srcIP, const string& destIP);
+
+string binAddition(const string& bin1, const string& bin2);
+
+string removeTrailingZeroes(const basic_string<char, char_traits<char>, allocator<char>>& basic_string);
+
+/**
+ * Main method that runs the code. Is originally used for easy testing, now it is just the forwarded actual main method.
+ * @param argc The number of arguments, the user gave on the command line.
+ * Only from the 2nd argument onwards, the arguments are usable, since the first argument is just the command itself.
+ * @param argv The arguments, the user gave on the command line.
+ * Only from the 2nd argument onwards, the arguments are usable, since the first argument is just the command itself.
+ */
+void runPuzzle(int argc, char *argv[]) {
+//    Default ip-address, in case the user did not enter any parameters.
     string dest_ip = "130.208.242.120";
-//    Start scanning ports from this port number
-    int from = 4000;
-//    Until (inclusive) this port number
-    int to = 4100;
-/* Take care of given arguments. We want 3 arguments, 'ip-address', 'low port, and 'high port' respectively.
+//    The secret ports
+    vector<int> open_ports;
+
+//    The UDP socket
+    int sock = socketCreation();
+    struct sockaddr_in dest_address = sockOpts(sock, dest_ip);
+
+//    The msg sent to the port
+    char buffer[1400];
+    int buff_len = sizeof(buffer);
+    strcpy(buffer, "Hey Port");
+/* Take care of given arguments. We want 1 or 4 arguments, 'ip-address',
+ * and optional 'port 1', 'port 2', 'port 3', and 'port 4' respectively.
  * The first argument is the ip-address of the destination.
- * The second one is the lowest port it needs to scan activity for.
- * The last argument is the last port, the program needs to scan activity for. */
+ * The ones after that are the open ports. */
 
 //    Too many arguments were given, only use the useful ones. And let the user know they are stupid.
-    if (argc > 4) {
-        printf("Too many arguments were given. Only the first 3 will be used. "
-               "Respectively, they are ip-address, low port, and high port.\n");
+    if (argc > 6) {
+        printf("Too many arguments were given. Only the first 5 will be used. "
+               "Respectively, they are ip-address, port 1, port 2, port 3, and port 4.\n");
     }
 
-    if (argc > 3) {
+    if (argc > 5) {
         dest_ip = argv[1];
         checkIp(dest_ip);
-        from = stoi(argv[2], nullptr, 10);
-        to = stoi(argv[3], nullptr, 10);
-        if (to < from) {
-            throw invalid_argument("High port is lower than low port");
+        open_ports.push_back(stoi(argv[2], nullptr, 10));
+        open_ports.push_back(stoi(argv[3], nullptr, 10));
+        open_ports.push_back(stoi(argv[4], nullptr, 10));
+        open_ports.push_back(stoi(argv[5], nullptr, 10));
+    } else {
+        int given_no_of_open_ports = 0;
+        if (argc > 1) {
+            given_no_of_open_ports = argc - 2;
+            dest_ip = argv[1];
+            const char* dest_ip_c = dest_ip.c_str();
+            checkIp(dest_ip_c);
+        } else {
+            const char* dest_ip_c = dest_ip.c_str();
+            printf("You have not entered an ip-address. The default ip-address will be used. This is %s.\n",
+                   dest_ip_c);
+        }
+        printf("You have given an insufficient amount of ports. 4 were required but %d were given.\n"
+               "The program will scan for ports that are open.\n",
+               given_no_of_open_ports);
+
+        int from = 4000;
+        int to = 4100;
+        if (hardCodedPorts) {
+            open_ports.push_back(4042);
+            open_ports.push_back(4097);
+            open_ports.push_back(4098);
+            open_ports.push_back(4099);
+        } else {
+            open_ports = findOpenPorts(dest_ip, from, to, sock, 4);
         }
     }
-    else if (argc == 3) {
-        dest_ip = argv[1];
-        checkIp(dest_ip);
-        from = stoi(argv[2], nullptr, 10);
-        to = from + 100;
-        printf("You have given 2 arguments, whereas 3 were expected.\n"
-               "The third parameter, 'high port', will be set to: %s\n",
-               to_string(to).c_str());
-    }
-    else if (argc == 2) {
-        dest_ip = argv[1];
-        checkIp(dest_ip);
-        bool potato = true;
-        printf("You have given 1 argument, whereas 3 were expected.\n"
-               "The second parameter, 'low port', will be set to: %s\n"
-               "The third parameter, 'high port', will be set to: %s\n",
-               to_string(from).c_str(), to_string(to).c_str());
-    }
-    else {
-        printf("You have given 0 arguments, whereas 3 were expected.\n"
-               "The first parameter, 'ip-address', will be set to: %s\n"
-               "The second parameter, 'low port', will be set to: %s\n"
-               "The third parameter, 'high port', will be set to: %s\n",
-               dest_ip.c_str(), to_string(from).c_str(), to_string(to).c_str());
-    }
-
-    int sock = socketCreation();
-    if (sock == -1) {
-        perror("socket was not created.");
-    }
-    sockOpts(sock, dest_ip);
-
-    printf("The open parts are: ");
-    for (auto el : findOpenPorts(dest_ip, from, to, sock, 4)) {
-        cout << el << ", ";
-    }
+    messageHandler(open_ports, sock, buffer, dest_ip);
 }
 
 struct sockaddr_in sockOpts(int sock, const string &destIP) {
@@ -180,7 +248,7 @@ vector<int> findOpenPorts(const string &destIP, int from, int to, int sock, int 
     char buffer[1400];
     strcpy(buffer, "Hey Port");
     vector<int> open_ports;
-    
+
 //    Loop over all requested port numbers
     for (int port_no = from; port_no <= to; port_no++) {
         string response = sendAndReceive(sock, buffer, destIP, port_no);
@@ -314,159 +382,12 @@ vector<int> stringVecToIntVec(const vector<string>& strVec) {
     return result;
 }
 
-///////////////////////////////////
-// TODO: Remove unused methods in the end.
-
-bool hardCodeHiddenPorts = true;
-// Used for testing TODO: Set all to false in final version.
-bool hardCodedPorts = true;
-bool testCustomHeader = false;
-// The payload if the program needs to send the group number.
-const char *groupNumber = "$group_47$";
-
-/**
- * Clion got upset when I declared this as a global variable, so it's made into a function.
- * @return All the hexadecimal characters in order.
- */
-string getHexChars() {
-    return "0123456789abcdef";
-}
-
-void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const string& destIP);
-
-bool binLarger(string bin1, string bin2);
-
-string binDiff(string bin1, const string& bin2);
-
-uint16_t removeShortOverflow(uint32_t header_sum);
-
-uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& srcIP, const string& destIP);
-
-string invBin(string bin);
-
-string hexToBin(const string& hexadecimalString);
-
-string decrementBin(string bin, int decrement);
-
-string incrementHex(string hex, int increment);
-
-string binToHex(const string& bin);
-
-string decrementHex(string hex, unsigned int decrement);
-
-string hexAddition(string hex1, const string& hex2);
-
-string hextetSum(const string& hex);
-
-string invHex(const string& hex);
-
-string ipToBin(const string& ip);
-
-uint16_t ipChecksum(struct iphdr ip_hdr);
-
-string createCorrectId(const string& desiredChecksum, const string& calcChecksum);
-
-char binToChar(const string& bin);
-
-string binToCharString(const string& bin);
-
-string checksumPortHandler(int sock, const string &destIP, const int &port);
-
-string evilPortHandler(int sock, const string &destIP, const int &port);
-
-string checksumPortHandler2(int sock, string response, const string& destIP, int port);
-
-string checksumPortHandler3(int sock, const string &destIP, int port, const string& newUDPChecksum,
-                            const string& newSrcIp);
-
-string oraclePortHandler(int sock, vector<string> secret_ports, const string &destIP, int port,
-                         const string& secretMsg);
-
-string oraclePortHandler2(int sock, const string &destIP, string previous_response, const string& secretMsg);
-
-void runPuzzle(int argc, char *argv[]);
-
-string oraclePortHandler3(int sock, const string &destIp, vector<string> responses, const vector<int> &portKnox,
-                          const string& secretMsg);
-
 // TODO: UNCOMMENT FOR THE FINAL VERSION
-///**
-// * @see runPuzzle()
-// */
-//int main(int argc, char *argv[]) {
-//    runPuzzle(argc, argv);
-//}
-
-const char * createHeaders(const string &newSrcIP, const string &destIP, unsigned int flag,
-                           const string &newUDPChecksum, int port);
-
 /**
- * Main method that runs the code. Is originally used for easy testing, now it is just the forwarded actual main method.
- * @param argc The number of arguments, the user gave on the command line.
- * Only from the 2nd argument onwards, the arguments are usable, since the first argument is just the command itself.
- * @param argv The arguments, the user gave on the command line.
- * Only from the 2nd argument onwards, the arguments are usable, since the first argument is just the command itself.
+ * @see runPuzzle()
  */
-void runPuzzle(int argc, char *argv[]) {
-//    Default ip-address, in case the user did not enter any parameters.
-    string dest_ip = "130.208.242.120";
-//    The secret ports
-    vector<int> open_ports;
-
-//    The UDP socket
-    int sock = socketCreation();
-    struct sockaddr_in dest_address = sockOpts(sock, dest_ip);
-
-//    The msg sent to the port
-    char buffer[1400];
-    int buff_len = sizeof(buffer);
-    strcpy(buffer, "Hey Port");
-/* Take care of given arguments. We want 1 or 4 arguments, 'ip-address',
- * and optional 'port 1', 'port 2', 'port 3', and 'port 4' respectively.
- * The first argument is the ip-address of the destination.
- * The ones after that are the open ports. */
-
-//    Too many arguments were given, only use the useful ones. And let the user know they are stupid.
-    if (argc > 6) {
-        printf("Too many arguments were given. Only the first 5 will be used. "
-               "Respectively, they are ip-address, port 1, port 2, port 3, and port 4.\n");
-    }
-
-    if (argc > 5) {
-        dest_ip = argv[1];
-        checkIp(dest_ip);
-        open_ports.push_back(stoi(argv[2], nullptr, 10));
-        open_ports.push_back(stoi(argv[3], nullptr, 10));
-        open_ports.push_back(stoi(argv[4], nullptr, 10));
-        open_ports.push_back(stoi(argv[5], nullptr, 10));
-    } else {
-        int given_no_of_open_ports = 0;
-        if (argc > 1) {
-            given_no_of_open_ports = argc - 2;
-            dest_ip = argv[1];
-            const char* dest_ip_c = dest_ip.c_str();
-            checkIp(dest_ip_c);
-        } else {
-            const char* dest_ip_c = dest_ip.c_str();
-            printf("You have not entered an ip-address. The default ip-address will be used. This is %s.\n",
-                   dest_ip_c);
-        }
-        printf("You have given an insufficient amount of ports. 4 were required but %d were given.\n"
-               "The program will scan for ports that are open.\n",
-               given_no_of_open_ports);
-
-        int from = 4000;
-        int to = 4100;
-        if (hardCodedPorts) {
-            open_ports.push_back(4042);
-            open_ports.push_back(4097);
-            open_ports.push_back(4098);
-            open_ports.push_back(4099);
-        } else {
-            open_ports = findOpenPorts(dest_ip, from, to, sock, 4);
-        }
-    }
-    messageHandler(open_ports, sock, buffer, dest_ip);
+int main(int argc, char *argv[]) {
+    runPuzzle(argc, argv);
 }
 
 /**
@@ -624,27 +545,51 @@ string incrementHex(string hex, int increment) {
  * @return The outcome of hex1 + hex2.
  */
 string hexAddition(string hex1, const string& hex2) {
+    debugPrint("pre-sto6", "", false);
     int hex2_as_int = stoi(hex2, nullptr, 16);
     debugPrint("hex2 as int", hex2_as_int, false);
     return incrementHex(std::move(hex1), hex2_as_int);
 }
 
 /**
- * Splits the given hexadecimal string into hextets and adds all these together.
- * @param hex A hexadecimal string
- * @return A hexidecimal string, not a hextet, because it could be overflowing. So, the overflow is kept.
+ * Splits the given binary string into hextets and adds all these together.
+ * @param bin A binary string
+ * @return A binary string, not a hextet, because it could be overflowing. So, the overflow is kept.
  */
-string hextetSum(const string& hex) {
-    string hextet_sum = "0000";
-//    A hextet uses 4 hexadecimal character, since hexadecimal is base 4 and a hextet consists of 16 bits.
-    int step_size = 4;
-    for (int i = 0; i < hex.size(); i += step_size) {
-        string hextet = hex.substr(i, step_size);
+string hextetSum(const string& bin) {
+    string hextet_sum;
+    unsigned long sum = 0;
+//    A hextet uses 16 bits
+    int step_size = 16;
+    for (int i = 0; i < bin.size(); i += step_size) {
+        string hextet = bin.substr(i, step_size);
         debugPrint("hextet", hextet, false);
-        hextet_sum = hexAddition(hextet_sum, hextet);
-        debugPrint("hextet_sum", hextet_sum, false);
+        debugPrint("pre-sto7", "", false);
+        debugPrint("sum", sum, false);
+        sum += stoi(hextet, nullptr, 2);
     }
-    return hextet_sum;
+    return removeTrailingZeroes(bitset<32>(sum).to_string());
+}
+
+string removeTrailingZeroes(const basic_string<char, char_traits<char>, allocator<char>>& basic_string) {
+    unsigned short trailing_zeroes_count = 0;
+    for (auto&& el : basic_string) {
+        if (el == '0') {
+            trailing_zeroes_count++;
+        } else {
+            break;
+        }
+    }
+    return basic_string.substr(trailing_zeroes_count);
+}
+
+/**
+ * This addition can not go over 64 bits.
+ * @return The result of bin1 + bin2, without trailing zeroes.
+ */
+string binAddition(const string& bin1, const string& bin2) {
+    string result_trail = bitset<64>(stoll(bin1) + stoll(bin2)).to_string();
+    return removeTrailingZeroes(result_trail);
 }
 
 /**
@@ -717,7 +662,7 @@ uint16_t ipChecksum(struct iphdr ip_hdr) {
     debugPrint("h_sum", hext_sum, false);
 
 //    Remove overflow
-    hext_sum = removeShortOverflow(hext_sum);
+//    hext_sum = removeHextetOverflow(hext_sum);
     debugPrint("h_sum", hext_sum, false);
 
 //    Invert
@@ -756,8 +701,13 @@ string createCorrectId(const string& desiredChecksum, const string& calcChecksum
  * @param bin A binary string consisting of 8 bits.
  * @return The binary string converted into a char.
  */
-char binToChar(const string& bin) {
-    return (char) stoi(bin, nullptr, 2);
+unsigned char binToChar(const string& bin) {
+    debugPrint("char as bin", bin, true);
+    int char_as_int = stoi(bin, nullptr, 2);
+    debugPrint("char as int", char_as_int, true);
+    unsigned char corr_char = static_cast<unsigned char>(std::bitset<8>(bin).to_ulong());
+    debugPrint("char", corr_char, true);
+    return corr_char;
 }
 
 /**
@@ -771,73 +721,9 @@ string binToCharString(const string& bin) {
     int step_size = 8;
     for (int i = 0; i < bin.size(); i += step_size) {
         string char_as_bin = bin.substr(i, step_size);
-        chars += binToChar(char_as_bin);
+        char char_to_add = (char)binToChar(char_as_bin);
     }
     return chars;
-}
-
-/**
- * Creation of the IPV4-header.
- * @param src_ip The source IP-address as a binary string.
- * @param dest_ip The source IP-address as a binary string.
- * @param flag Integer representation of the flags bitset of size 3.
- * @return A valid IPV4-header.
- */
-struct iphdr createIPHeader(const string& src_ip, const string& dest_ip, unsigned int flag) {
-    struct iphdr ip_hdr{};
-//    Creation of all the header fields.
-
-//    Version = 4, because IPV4
-    unsigned int version = htons(4);
-//    IHL = 5, because no options
-    unsigned int ihl = htons(5);
-//    DSCP = 0, because not necessary here
-//    ECN = 0, because not necessary here
-//    These fields are merged, since they are merged in the struct.
-    uint8_t dscp_ecn = htons(0);
-//    Total length = 28, because size of IP + UDP header = 20 bytes + 8 bytes, respectively
-    uint16_t len_total = htons(28);
-//    Identification = 0, because not necessary here
-    uint16_t id = htons(0);
-//    Flags = 0, because doesn't matter here
-//    Fragment offset = 0, data is at regular position
-//    These fields are merged, since they are merged in the struct.
-    string flag_str = bitset<3>(flag).to_string();
-    string frag_off = bitset<13>(0).to_string();
-    uint16_t flag_frag = htons(stoi(flag_str + frag_off,nullptr, 2));
-//    Time To Live = 250, so the packet won't easily get dropped on the way
-    uint8_t ttl = htons(250);
-//    Protocol = 17, because UDP
-    uint8_t protocol = htons(17);
-//    Header checksum = 0, so it won't be checked :)
-    uint16_t ip_checksum = htons(0);
-
-/* For th ip-addresses, stoll is used, because they can't always fit in a positive integer.
- * Since that uses 31 bits for the default 32 bit environment */
-
-//    Source IP address
-    debugPrint("src_ip", src_ip, false);
-    uint32_t src_ip_int = htons(stoll(ipToBin(src_ip), nullptr, 2));
-    debugPrint("src_ip_int", src_ip_int, false);
-//    Destination IP address
-    debugPrint("dest_ip", dest_ip, false);
-    string dest_ip_str = ipToBin(dest_ip);
-    debugPrint("d_ip_str", dest_ip_str, false);
-    uint32_t dest_ip_int = htons(stoll(dest_ip_str, nullptr, 2));
-
-//    Creation of the ip-header
-    ip_hdr.version = version;
-    ip_hdr.ihl = ihl;
-    ip_hdr.tos = dscp_ecn;
-    ip_hdr.tot_len = len_total;
-    ip_hdr.id = id;
-    ip_hdr.frag_off = flag_frag;
-    ip_hdr.ttl = ttl;
-    ip_hdr.protocol = protocol;
-    ip_hdr.check = ip_checksum;
-    ip_hdr.saddr = src_ip_int;
-    ip_hdr.daddr = dest_ip_int;
-    return ip_hdr;
 }
 
 /**
@@ -866,30 +752,37 @@ string invBin(string bin) {
  * This method doesn't look at it anyways. It does however, need to contain the altered checksum already.
  * @param srcIP The source IP-address, which is used to create the IPV4 pseudo header.
  * Which, in turn, is used to do the UDP-header checksum calculation,
- * thus the reverse engineering of that same calculation.
+ * thus the reverse engineering of that same calculation. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param destIP The IP-address of the destination, which is used to create the IPV4 pseudo header.
  * Which, in turn, is used to do the UDP-header checksum calculation,
- * thus the reverse engineering of that same calculation.
+ * thus the reverse engineering of that same calculation. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @return The variable that the source port should be set to, encountered for the checksum.
  */
-uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& srcIP, const string& destIP) {
-    uint16_t correct_UDP_src_port;
+string adaptedUDPSrcPort(const string& udp_hdr, const string& srcIP, const string& destIP) {
+    string correct_UDP_src_port;
+
+//    Extract information from the given UDP-header
+    string dest = udp_hdr.substr(0, 16);
+    string len = udp_hdr.substr(16, 16);
+    string check = udp_hdr.substr(32, 16);
 
 //    Creation of the pseudo header fields.
 
 //    IP-addresses split up into two hextets each, since they both use 32 bits.
     string src_ip_bin = ipToBin(srcIP);
     debugPrint("sip bin", src_ip_bin, false);
-    uint32_t src_ip_1 = stoi(src_ip_bin.substr(0, 16), nullptr, 2);
-    uint32_t src_ip_2 = stoi(src_ip_bin.substr(16, 16), nullptr, 2);
+    string src_ip_1 = src_ip_bin.substr(0, 16);
+    string src_ip_2 = src_ip_bin.substr(16, 16);
     string dest_ip_bin = ipToBin(srcIP);
     debugPrint("dip bin", dest_ip_bin, false);
-    uint32_t dest_ip_1 = stoi(dest_ip_bin.substr(0, 16), nullptr, 2);
-    uint32_t dest_ip_2 = stoi(dest_ip_bin.substr(16, 16), nullptr, 2);
-//    Protocol = 17, because UDP, the zero-strings are mandatory padding
-    uint8_t protocol = 17;
+    string dest_ip_1 = dest_ip_bin.substr(0, 16);
+    string dest_ip_2 = dest_ip_bin.substr(16, 16);
+//    Protocol = 17, because UDP, uses zero-strings as padding to create one full hextet.
+    string protocol = bitset<16>(17).to_string();
 //    Just a copy of the length in the udp header
-    uint32_t udp_len = udp_hdr->len;
+    const string& udpLen = len;
 
 //    Maximum amount of bits in the new source port.
     int max_size = 16;
@@ -898,27 +791,26 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& srcIP, const string& d
 
 /* Now follows the process of reverse engineering the given checksum,
  * so we can edit the length-field in the UDP header to get ensure that the checksum is valid. */
-    debugPrint("check", udp_hdr->check, false);
-    unsigned int inv_check_sum = max_short - udp_hdr->check;
+    string inv_check_sum = invBin(check);
     debugPrint("Inv check sum", inv_check_sum, false);
 
 //    Adding all the header fields.
-    uint32_t header_sum = src_ip_1 + src_ip_2 + dest_ip_1 + dest_ip_2 + protocol + udp_len + udp_hdr->len +
-            udp_hdr->dest;
+    string header_sum = hextetSum(src_ip_1 + src_ip_2 + dest_ip_1 + dest_ip_2 + protocol + udpLen + dest + len);
+    debugPrint("Hex hdr sum", header_sum.size(), false);
     debugPrint("Hex hdr sum", header_sum, false);
 
 //    The sum of the header fields, possibly has overflow. Make sure that it doesn't
-    header_sum = removeShortOverflow(header_sum);
+    header_sum = removeHextetOverflow(header_sum);
     debugPrint("Hex hdr sum no of", header_sum, false);
 
 /* Ensures that the inverse check sum is larger than the header checksum.
  * Since that difference is the new source port. */
     if (header_sum > inv_check_sum) {
-        inv_check_sum += max_short;
+        inv_check_sum = decrementBin(inv_check_sum, 1).insert(0, "1");
     }
     debugPrint("Hdr sum, bin", header_sum, false);
     debugPrint("corrected checksum", inv_check_sum, false);
-    correct_UDP_src_port = inv_check_sum - header_sum;
+    correct_UDP_src_port = binDiff(inv_check_sum, header_sum);
     debugPrint("udp len, no pad", correct_UDP_src_port, false);
     return correct_UDP_src_port;
 }
@@ -928,17 +820,19 @@ uint16_t adaptedUDPSrcPort(udphdr *udp_hdr, const string& srcIP, const string& d
  * @param header_sum An integer that might need more than 16 bits. I.e., it cannot be stored into a hextet.
  * @return A hextet in integer format.
  */
-uint16_t removeShortOverflow(uint32_t header_sum) {
+string removeHextetOverflow(const string& header_sum) {
+    debugPrint("pre-sto2", "", false);
+    unsigned long hs_int = stoi(header_sum, nullptr, 2);
     auto max_size = (unsigned int) pow(2, 16);
     debugPrint("hs int", header_sum, false);
-    while (header_sum >= max_size) {
+    while (hs_int >= max_size) {
 //        Integer division
-        unsigned int overflow = header_sum / max_size;
-        unsigned int remainder = header_sum % max_size;
-        header_sum = remainder + overflow;
+        unsigned int overflow = hs_int / max_size;
+        unsigned int remainder = hs_int % max_size;
+        hs_int = remainder + overflow;
     }
     debugPrint("Hs, no overflow", header_sum, false);
-    return header_sum;
+    return bitset<16>(hs_int).to_string();
 }
 
 /**
@@ -947,16 +841,13 @@ uint16_t removeShortOverflow(uint32_t header_sum) {
  * @param bin2 A binary string
  * @return The result of |bin1 - bin2|.
  */
-string binDiff(string bin1, const string& bin2) {
+string binDiff(const string& bin1, const string& bin2) {
 /* Since this method only really works when one binary string is larger than or equal to the other.
  * The program switches the strings around. */
     if (!binLarger(bin2, bin1)) {
-        string diff = "0";
-        while (bin1 != bin2) {
-            bin1 = decrementBin(bin1, 1);
-            diff = incrementHex(diff, 1);
-        }
-        return hexToBin(diff);
+        debugPrint("pre-sto3", "", false);
+        return removeTrailingZeroes(bitset<64>(
+                stoi(bin1, nullptr, 2) - stoi(bin2, nullptr, 2)).to_string());
     } else {
         return binDiff(bin2, bin1);
     }
@@ -985,45 +876,127 @@ bool binLarger(string bin1, string bin2) {
 }
 
 /**
+ * Creation of the IPV4-header.
+ * @param srcIP The source IP-address as a binary string. It should be in the standard IP-address form,
+ * integers separated by periods.
+ * @param destIP The source IP-address as a binary string. It should be in the standard IP-address form,
+ * integers separated by periods.
+ * @param flag Integer representation of the flags bitset of size 3.
+ * @return A valid IPV4-header.
+ */
+string createIPHeader(const string& srcIP, const string& destIP, unsigned int flag) {
+    string ip_header;
+//    Creation of all the header fields.
+
+//    Version = 4, because IPV4
+    string version = bitset<4>(4).to_string();
+//    IHL = 5, because no options
+    string ihl = bitset<4>(5).to_string();
+//    DSCP = 0, because not necessary here
+    string dscp = bitset<6>(0).to_string();
+//    ECN = 0, because not necessary here
+    string ecn = bitset<2>(0).to_string();
+//    These fields are merged, to form one hextet.
+    string version_ihl_tos = version + ihl + dscp + ecn;
+
+// Total length = 28, because size of IP-header + UDP-header = 20 bytes + 8 bytes, respectively.
+    string len_total = bitset<16>(28).to_string();
+//    Identification = 0, because not necessary here
+    string id = bitset<16>(0).to_string();
+
+//    Flags field, is mainly used for the evil port.
+    string flag_str = bitset<3>(flag).to_string();
+//    Fragment offset = 0, data is at regular position.
+    string frag_off = bitset<13>(0).to_string();
+//    These fields are merged to form one hextet.
+    string flag_frag = flag_str + frag_off;
+
+//    Time To Live = 250, so the packet won't easily get dropped on the way
+    string ttl = bitset<8>(250).to_string();
+//    Protocol = 17, because UDP
+    string protocol = bitset<8>(17).to_string();
+//    These fields are merged to form one hextet.
+    string ttl_prot = ttl + protocol;
+
+//    Header checksum = 0, so it won't be checked :)
+    string ip_checksum = bitset<16>(0).to_string();
+
+//    Splitting the binary representations of both IP-addresses into 2 hextets.
+    string src_ip_bin = ipToBin(srcIP);
+    string src_ip_hext1 = src_ip_bin.substr(0, 16);
+    string src_ip_hext2 = src_ip_bin.substr(16, 16);
+
+    string dest_ip_bin = ipToBin(destIP);
+    string dest_ip_hext1 = dest_ip_bin.substr(0, 16);
+    string dest_ip_hext2 = dest_ip_bin.substr(16, 16);
+
+//    Adds the fields to the IP-header.
+    ip_header += version_ihl_tos;
+    ip_header += len_total;
+    ip_header += id;
+    ip_header += flag_frag;
+    ip_header += ttl_prot;
+    ip_header += ip_checksum;
+    ip_header += src_ip_hext1;
+    ip_header += src_ip_hext2;
+    ip_header += dest_ip_hext1;
+    ip_header += dest_ip_hext2;
+    return ip_header;
+}
+
+/**
  * Creates a valid UDP-header with a custom checksum by changing the source port. For more information:
  * https://en.wikipedia.org/wiki/User_Datagram_Protocol
  * @param dest_port The port that needs to receive the payload.
  * @param checksum The custom checksum
- * @param src_ip Used to create the IPV4 pseudo header for checksum calculation.
- * @param dest_ip Used to create the IPV4 pseudo header for checksum calculation.
+ * @param srcIP Used to create the IPV4 pseudo header for checksum calculation. It should be in the standard IP-address form,
+ * integers separated by periods.
+ * @param destIP Used to create the IPV4 pseudo header for checksum calculation. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @return A valid UDP-header, with a custom checksum and a changed source port.
  */
-struct udphdr createUDPHeader(int dest_port, const string& checksum, const string& src_ip,
-                            const string& dest_ip) {
-    struct udphdr udp_hdr{};
+string createUDPHeader(int dest_port, const string& checksum, const string& srcIP, const string& destIP) {
+    string udp_header;
 //    Creation of the header fields
-//    Source port = 0, will be changed later, is only here for a better overview
-    uint16_t src = htons(0);
-//    Destination port
-    uint16_t dest = htons(dest_port);
-//    Length = 8, because the UDP-header is 8 bytes long
-    uint16_t len = htons(8);
-//    Checksum
-    debugPrint("check, pre-stoi", checksum, false);
-    uint16_t check = htons(stoi(checksum, nullptr, 16));
-    debugPrint("check, post-stoi", check, false);
 
-//    Partial creation of the UDP header
-    udp_hdr.dest = dest;
-    udp_hdr.len = len;
-    udp_hdr.check = check;
+//    Source port = 0, will be changed later, is only here for a better overview
+    string src = bitset<16>(0).to_string();
+//    Destination port
+    string dest = bitset<16>(dest_port).to_string();
+//    Length = 8, because the UDP-header is 8 bytes long
+    string len = bitset<16>(8).to_string();
+//    Checksum
+    debugPrint("check, pre-sto4", checksum, false);
+    string check = hexToBin(checksum);
+    debugPrint("check, post-sto", check, false);
+
+    string header_remainder;
+    header_remainder += dest;
+    header_remainder += len;
+    header_remainder += check;
 
 //    Correct the source port field, because we want a custom checksum
-//    src = htons(adaptedUDPSrcPort(udp_hdr, src_ip, dest_ip));
+    src = adaptedUDPSrcPort(header_remainder, srcIP, destIP);
 
-//    Create the remainder of the header
-    udp_hdr.source = src;
-    return udp_hdr;
+//    Add the fields of the header.
+    udp_header += src;
+    udp_header += header_remainder;
+    return udp_header;
 }
 
-const char * createHeaders(const string &newSrcIP, const string &destIP, unsigned int flag, const string &newUDPChecksum,
-                           int port) {
-    return nullptr;
+string createHeaders(const string &newSrcIP, const string &destIP, unsigned int flag,
+                     const string &newUDPChecksum, int port) {
+    string headers_binary = createIPHeader(newSrcIP, destIP, flag) +
+            createUDPHeader(port, newUDPChecksum, newSrcIP, destIP);
+    debugPrint("headers bin", headers_binary, true);
+    string headers_bytes_as_chars = binToCharString(headers_binary);
+    debugPrint("headers as chars", headers_bytes_as_chars, true);
+    string headers_network_byte_order;
+    for (auto&& byte : headers_bytes_as_chars) {
+        headers_network_byte_order += (char) htons(byte);
+    }
+    debugPrint("headers in nbo", headers_network_byte_order, true);
+    return headers_network_byte_order;
 }
 
 /**
@@ -1031,7 +1004,8 @@ const char * createHeaders(const string &newSrcIP, const string &destIP, unsigne
  * @param openPorts The open ports of the given IP-address. These are the ports we need to send special messages to.
  * @param sock The socket that the program will send packets over.
  * @param buffer The buffer containing the message the program wants to send for now.
- * @param destIP The location of the server that should receive the messages.
+ * @param destIP The location of the server that should receive the messages. It should be in the standard IP-address form,
+ * integers separated by periods.
  */
 void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const string& destIP) {
 /* This is the port we need to send the comma seperated list of secret ports to.
@@ -1094,7 +1068,7 @@ void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const 
     for (auto&& open_port : openPorts) {
 /* Used for testing msg where we put custom headers in the payload.
  * Should not be run during the final version. */
-        if (testCustomHeader and open_port != 4097) {
+        if (testChecksumPort and open_port != 4097) {
             continue;
         }
         string response = sendAndReceive(sock, buffer, destIP, open_port);
@@ -1110,11 +1084,13 @@ void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const 
             case (keyChar2): {
 //            This is the checksum port.
                 response = checksumPortHandler(sock, destIP, open_port);
+//    TODO: Change this to do something with the response.
                 break;
             }
             case (keyChar3): {
 //            This is the evil port.
                 response = evilPortHandler(sock, destIP, open_port);
+//    TODO: Change this to do something with the response.
                 break;
             }
             case (keyChar4): {
@@ -1129,13 +1105,16 @@ void messageHandler(const vector<int>& openPorts, int sock, char *buffer, const 
             }
         }
     }
-    string response = oraclePortHandler(sock, secret_ports, destIP, oracle_port, secret_msg);
+    if (!testChecksumPort) {
+        string response = oraclePortHandler(sock, secret_ports, destIP, oracle_port, secret_msg);
+    }
 }
 
 /**
  * Sends the group number to the checksum port and forwards its response to checksumPortHandler2
  * @param sock The socket it uses to send the data.
- * @param destIP The IP-address of the destination.
+ * @param destIP The IP-address of the destination. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param port The checksum port.
  * @return TODO: Figure out what to return here.
  */
@@ -1147,6 +1126,7 @@ string checksumPortHandler(int sock, const string &destIP, const int &port) {
 
     if (!hardCodeHiddenPorts) {
         response = checksumPortHandler2(sock, response, destIP, port);
+//    TODO: Change this to do something with the response.
     }
     return parsed_string;
 }
@@ -1155,7 +1135,8 @@ string checksumPortHandler(int sock, const string &destIP, const int &port) {
  * Uses the information gathered in checksumPortHandler and does some string parsing here.
  * It passes this information to checksumPortHandler3.
  * @param sock The socket it uses to send the data.
- * @param destIP The IP-address of the destination.
+ * @param destIP The IP-address of the destination. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param port The checksum port.
  * @return TODO: Figure out what to return here.
  * If the program did not send the previous message correctly, then it will return the empty string.
@@ -1197,6 +1178,7 @@ string checksumPortHandler2(int sock, string response, const string& destIP, int
     debugPrint("new src ip", new_src_ip, false);
 
     response = checksumPortHandler3(sock, destIP, port, new_UDP_checksum, new_src_ip);
+//    TODO: Change this to do something with the response.
 
     return parsed_string;
 }
@@ -1204,20 +1186,29 @@ string checksumPortHandler2(int sock, string response, const string& destIP, int
 /**
  * Creates valid IPV4- and UDP-headers and sends them as a payload.
  * @param sock The socket used for sending.
- * @param destIP The IP-address of the destination.
+ * @param destIP The IP-address of the destination. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param port The port to send it to, the checksum port.
- * @param newUDPChecksum The checksum that should be as the UDP-header
- * @param newSrcIp The changed source IP-address
+ * @param newUDPChecksum The checksum that should be the new checksum of the UDP-header.
+ * It should be in hexadecimal form.
+ * @param newSrcIp The changed source IP-address. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @return TODO: Figure out what to return here.
  */
 string checksumPortHandler3(int sock, const string &destIP, int port, const string& newUDPChecksum,
                             const string& newSrcIp) {
 //    Creation of the buffer
     char buff_special_msg[1400];
+    string response;
 
-    unsigned int flag = 0;
-
-    strcpy(buff_special_msg, createHeaders(newSrcIp, destIP, flag, newUDPChecksum, port));
+//    unsigned int flag = 0;
+//
+//    strcpy(buff_special_msg, createHeaders(newSrcIp, destIP, flag, newUDPChecksum, port).c_str());
+//
+//    string response = sendAndReceive(sock, buff_special_msg, destIP, port);
+//    debugPrint("resp", response, false);
+////    TODO: Change this to do something with the response.
+//    return response;
 
 //    Letting separate functions did not work. So unfortunately we need one long, ugly function instead.
 //    Creating the headers that go into the payload.
@@ -1302,9 +1293,9 @@ string checksumPortHandler3(int sock, const string &destIP, int port, const stri
 //    Length = 8, because the length of the UDP header is 8 bytes, and the program is not sending any extra data.
     uint16_t len = htons(8);
 //    Checksum
-    debugPrint("check, pre-stoi", newUDPChecksum, false);
+    debugPrint("check, pre-sto5", newUDPChecksum, false);
     uint16_t check = htons(stoi(newUDPChecksum, nullptr, 16));
-    debugPrint("check, post-stoi", check, false);
+    debugPrint("check, post-sto", check, false);
 
 //    Partial creation of the UDP-header
     udp_hdr->dest = dest;
@@ -1312,7 +1303,7 @@ string checksumPortHandler3(int sock, const string &destIP, int port, const stri
     udp_hdr->check = check;
 
 //    Correct the source port field, because we want a custom checksum
-    src = htons(adaptedUDPSrcPort(udp_hdr, newSrcIp, destIP));
+//    src = htons(adaptedUDPSrcPort(udp_hdr, newSrcIp, destIP));
 
 //    Create the remainder of the header
     udp_hdr->source = src;
@@ -1321,7 +1312,7 @@ string checksumPortHandler3(int sock, const string &destIP, int port, const stri
     debugPrint("udphdr size", sizeof(*udp_hdr), false);
 
 //    Printing ip header info
-    debugPrint("iphdr ver", ip_hdr->version, false);
+    debugPrint("iphdr ver", ip_hdr->version, true);
     debugPrint("iphdr ihl", ip_hdr->ihl, false);
     debugPrint("iphdr tos", ip_hdr->tos, false);
     debugPrint("iphdr len", ip_hdr->tot_len, false);
@@ -1346,18 +1337,125 @@ string checksumPortHandler3(int sock, const string &destIP, int port, const stri
 //    memcpy(buff_special_msg + sizeof(*ip_hdr), &udp_hdr, sizeof(*udp_hdr));
     debugPrint("buffer", buff_special_msg, false);
 
-    string response = sendAndReceive(sock, buff_special_msg, destIP, port);
+//    string response = sendAndReceive(sock, buff_special_msg, destIP, port);
 //    TODO: Change this to do something with the response.
 //    secret_ports.push_back(response);
     return response;
 }
 
 string evilPortHandler(int sock, const string &destIP, const int &port) {
-//    TODO: Send group number with evil bit set to 1.
-    const char* special_msg = "";
+
+    // 96 bit (12 bytes) pseudo header needed for udp header checksum calculation
+    struct pseudo_header
+    {
+        u_int32_t source_address;
+        u_int32_t dest_address;
+        u_int8_t placeholder;
+        u_int8_t protocol;
+        u_int16_t udp_length;
+    };
+
+//  TODO: Send group number with evil bit set to 1.
+    const char* special_msg = "group_47$";
     char buff_special_msg[1400];
-    strcpy(buff_special_msg, special_msg);
-    string response = sendAndReceive(sock, buff_special_msg, destIP, port);
+    // create raw socket
+    int s = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if(s == -1)
+    {
+        //socket creation failed, may be because of non-root privileges
+        perror("Failed to create raw socket");
+        exit(1);
+    }
+    //Datagram to represent the packet
+    char datagram[4096] , source_ip[32] , *data , *pseudogram;
+    //zero out the packet buffer
+    memset (datagram, 0, 4096);
+    //IP header
+    struct iphdr *iph = (struct iphdr *) datagram; //createIPHeader(4)
+    //UDP header
+    struct udphdr *udph = (struct udphdr *) (datagram + sizeof (struct ip));
+
+    struct sockaddr_in sin;
+    struct pseudo_header psh;
+
+    //Data part
+    data = datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
+    strcpy(data , "$group_47$");
+    //some address resolution
+    //strcpy(source_ip , "192.168.1.2");
+
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons(80);
+    //sin.sin_addr.s_addr = inet_addr ("192.168.1.1");
+
+#define IP_EVIL	0x8000		/* Flag: "reserve bit"	*/
+    //Fill in the IP Header
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + strlen(data);
+    iph->id = htonl (54321);	//Id of this packet
+    //iph->frag_off = 32768;
+    //iph->frag_off & IP_EVIL;
+    iph->frag_off |= htons(IP_EVIL);	/* Set evil bit. */
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_UDP;
+    iph->check = 0;		//Set to 0 before calculating checksum
+    //iph->saddr = inet_addr(inet_ntoa((((struct sockaddr_in *)&(ifreq_ip.ifr_addr))->sin_addr)));
+    iph->saddr = inet_addr ( source_ip );	//Spoof the source ip address
+    iph->daddr = inet_addr(destIP.c_str()); // put destination IP address
+    // iph->daddr = sin.sin_addr.s_addr;
+
+    //Ip checksum
+    iph->check = 0;
+    //UDP header
+    udph->source = htons (6666);
+    udph->dest = htons (port);
+    udph->len = htons(8 + strlen(data)); //tcp header size
+    udph->check = 0;	//leave checksum 0 now, filled later by pseudo header
+
+    //Now the UDP checksum using the pseudo header
+    psh.source_address = inet_addr( source_ip );
+    psh.dest_address = sin.sin_addr.s_addr;
+    psh.placeholder = 0;
+    psh.protocol = IPPROTO_UDP;
+    psh.udp_length = htons(sizeof(struct udphdr) + strlen(data) );
+
+    int psize = sizeof(struct pseudo_header) + sizeof(struct udphdr) + strlen(data);
+    pseudogram = (char *) malloc(psize);
+    memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
+    memcpy(pseudogram + sizeof(struct pseudo_header), udph , sizeof(struct udphdr) + strlen(data));
+
+    udph->check = 0;
+
+    // for the recv function
+    int recv_sock = socket(AF_INET, SOCK_RAW, 17);
+
+    struct timeval tv{};
+//    timeout of half a second
+    tv.tv_sec = 0;
+    tv.tv_usec = timeout * 1000;
+    //setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)); //maybe 17 for 2nd parameter, SO_BINDTODEVICE
+    // int bind(recv_sock, inet_addr(source_ip), sizeof(inet_addr(destIP.c_str())));//const struct sockaddr *addr, socklen_t addrlen);
+
+    //Send the packet
+    if (sendto(s, datagram, iph->tot_len, 0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
+    {
+        perror("sendto failed");
+    }
+        //Data sent successfully
+    else
+    {
+        char receive_buff[2000];
+        struct sockaddr_in receive_address{};
+        socklen_t address_len = sizeof(receive_address);
+        recvfrom(s, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&receive_address, &address_len);
+        printf ("Packet Sent. Length : %d \n" , iph->tot_len);
+        //make udp socket and set to the same port
+    }
+
+    //strcpy(buff_special_msg, special_msg);
+    //string response = sendAndReceive(s, buff_special_msg, destIP, port);
     if (!hardCodeHiddenPorts) {
 //        TODO: Change this to do something with the response.
 //        secret_ports.push_back(response);
@@ -1370,7 +1468,8 @@ string evilPortHandler(int sock, const string &destIP, const int &port) {
  * and passes that response on to oraclePortHandler2.
  * @param sock The socket that sends the data.
  * @param secret_ports The hidden ports
- * @param destIP The IP-address of the destination
+ * @param destIP The IP-address of the destination. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param port The port to send the info to
  * @param secretMsg The secret message, which is needed later.
  * @return TODO: Figure out what to return here.
@@ -1395,7 +1494,8 @@ string oraclePortHandler(int sock, vector<string> secret_ports, const string &de
  * Parses the response of the previous handler and knocks on the hidden ports.
  * This response is sent to oraclePortHandler3;
  * @param sock The socket it uses to send the data.
- * @param destIP The IP-address of the destination.
+ * @param destIP The IP-address of the destination. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param previous_response The response that the previous handler received.
  * @param secretMsg The secret message that needs to be sent to each of the hidden ports as a knock.
  * @return TODO: Figure out what to return here.
@@ -1419,9 +1519,7 @@ string oraclePortHandler2(int sock, const string &destIP, string previous_respon
 
 //        Prints out the response we got from the server
         cout << "The server responded:" << endl;
-        for (auto&& response : responses) {
-            cout << response << endl;
-        }
+        cout << responses[responses.size() - 1] << endl;
         return oraclePortHandler3(sock, destIP, responses, port_knox, secretMsg);
     }
     return "";
@@ -1430,7 +1528,8 @@ string oraclePortHandler2(int sock, const string &destIP, string previous_respon
 /**
  * This function enters the hidden port.
  * @param sock The socket it uses to send the data.
- * @param destIp The IP-address of the destination.
+ * @param destIp The IP-address of the destination. It should be in the standard IP-address form,
+ * integers separated by periods.
  * @param responses All the responses from each port they got from the previous handler.
  * Only the last response is valuable.
  * @param portKnox The ports it sent the previous data to.
